@@ -3822,3 +3822,195 @@ msgstr ""
 "Allgemeines Buchungsfenster für diesen Raum im 24-Stunden-Format (0–24 Uhr)."
 " 00:00 bis 24:00 = rund um die Uhr buchbar. Beispiel: 09:00 bis 23:00. Die "
 "Reinigungszeit nach dem Ende ist nicht enthalten."
+
+msgid "Team Notification Emails"
+msgstr "Team-E-Mail-Adressen"
+
+msgid "Team Email Notifications"
+msgstr "Team-E-Mail-Benachrichtigungen"
+
+msgid "Everyone listed here gets an email for every new booking. Add or remove addresses at any time."
+msgstr "Alle hier aufgeführten Adressen erhalten bei jeder neuen Buchung eine E-Mail. Adressen können jederzeit hinzugefügt oder entfernt werden."
+
+msgid "Send booking notifications to the team addresses listed above"
+msgstr "Buchungsbenachrichtigungen an die oben aufgeführten Team-Adressen senden"
+
+msgid "Add email address"
+msgstr "E-Mail-Adresse hinzufügen"
+
+msgid "Remove this address"
+msgstr "Diese Adresse entfernen"
+
+msgid "name@example.com"
+msgstr "name@beispiel.de"
+
+msgid "Invalid email address: %s"
+msgid_plural "Invalid email addresses: %s"
+msgstr[0] "Ungültige E-Mail-Adresse: %s"
+msgstr[1] "Ungültige E-Mail-Adressen: %s"
+
+msgid "Past — bookable"
+msgstr "Vergangen — buchbar"
+
+msgid "You are not allowed to delete bookings."
+msgstr "Sie sind nicht berechtigt, Buchungen zu löschen."
+
+msgid "No bookings were selected."
+msgstr "Es wurden keine Buchungen ausgewählt."
+
+msgid "Delete selected"
+msgstr "Ausgewählte löschen"
+
+msgid "Select bookings with the checkboxes to delete several at once."
+msgstr "Wählen Sie Buchungen über die Kontrollkästchen aus, um mehrere auf einmal zu löschen."
+
+msgid "Select all bookings"
+msgstr "Alle Buchungen auswählen"
+
+msgid "Select booking %s"
+msgstr "Buchung %s auswählen"
+
+msgid "Select"
+msgstr "Auswählen"
+
+msgid "Are you sure you want to delete the selected bookings?"
+msgstr "Möchten Sie die ausgewählten Buchungen wirklich löschen?"
+
+msgid "This action cannot be undone. Payments and invoices belonging to these bookings are removed as well."
+msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Zahlungen und Rechnungen dieser Buchungen werden ebenfalls entfernt."
+
+msgid "Delete Bookings"
+msgstr "Buchungen löschen"
+
+msgid "Selected:"
+msgstr "Ausgewählt:"
+
+msgid "Booking References:"
+msgstr "Buchungsreferenzen:"
+
+msgid "%d booking deleted."
+msgid_plural "%d bookings deleted."
+msgstr[0] "%d Buchung gelöscht."
+msgstr[1] "%d Buchungen gelöscht."
+
+msgid "Could not delete booking #%s."
+msgid_plural "Could not delete these bookings: #%s."
+msgstr[0] "Buchung #%s konnte nicht gelöscht werden."
+msgstr[1] "Diese Buchungen konnten nicht gelöscht werden: #%s."
+
+msgid "Daily Summary Email"
+msgstr "Tägliche Zusammenfassung"
+
+msgid "Daily Summary Recipients"
+msgstr "Empfänger der täglichen Zusammenfassung"
+
+msgid "Daily Summary Send Time"
+msgstr "Sendezeit der Zusammenfassung"
+
+msgid "Send an automatic daily summary of bookings, room usage and revenue"
+msgstr "Automatische tägliche Zusammenfassung zu Buchungen, Raumauslastung und Umsatz senden"
+
+msgid "Who receives the daily summary. Leave empty to use the team addresses above."
+msgstr "Wer die tägliche Zusammenfassung erhält. Leer lassen, um die oben genannten Team-Adressen zu verwenden."
+
+msgid "When the summary is sent. At 00:00 it covers the day that just ended; at any later time it covers the current day up to that point."
+msgstr "Wann die Zusammenfassung gesendet wird. Um 00:00 Uhr umfasst sie den soeben beendeten Tag; zu jeder späteren Uhrzeit den laufenden Tag bis zu diesem Zeitpunkt."
+
+msgid "Send summary now"
+msgstr "Zusammenfassung jetzt senden"
+
+msgid "Next summary: %s"
+msgstr "Nächste Zusammenfassung: %s"
+
+msgid "Not scheduled — switch the daily summary on and save to schedule it."
+msgstr "Nicht geplant — tägliche Zusammenfassung aktivieren und speichern, um sie einzuplanen."
+
+msgid "Enter a time as HH:MM"
+msgstr "Uhrzeit im Format HH:MM eingeben"
+
+msgid "The daily summary could not be sent. Check that at least one recipient is configured."
+msgstr "Die tägliche Zusammenfassung konnte nicht gesendet werden. Prüfen Sie, ob mindestens ein Empfänger hinterlegt ist."
+
+msgid "%1$s — daily summary for %2$s"
+msgstr "%1$s — Tageszusammenfassung für %2$s"
+
+msgid "Daily summary for %s"
+msgstr "Tageszusammenfassung für %s"
+
+msgid "Hours booked"
+msgstr "Gebuchte Stunden"
+
+msgid "Booking value"
+msgstr "Buchungswert"
+
+msgid "Payments received"
+msgstr "Erhaltene Zahlungen"
+
+msgid "Outstanding"
+msgstr "Offen"
+
+msgid "New bookings"
+msgstr "Neue Buchungen"
+
+msgid "By status"
+msgstr "Nach Status"
+
+msgid "By room"
+msgstr "Nach Raum"
+
+msgid "Value"
+msgstr "Wert"
+
+msgid "No bookings for this day."
+msgstr "Keine Buchungen an diesem Tag."
+
+msgid "Cancellation fees for this day: %s"
+msgstr "Stornogebühren an diesem Tag: %s"
+
+msgid "Automated summary from the Hourly Room Booking plugin."
+msgstr "Automatische Zusammenfassung des Hourly-Room-Booking-Plugins."
+
+msgid "No show"
+msgstr "Nicht erschienen"
+
+msgid "Daily summary sent to %d address."
+msgid_plural "Daily summary sent to %d addresses."
+msgstr[0] "Tageszusammenfassung an %d Adresse gesendet."
+msgstr[1] "Tageszusammenfassung an %d Adressen gesendet."
+
+msgid "You are not allowed to delete payments."
+msgstr "Sie sind nicht berechtigt, Zahlungen zu löschen."
+
+msgid "No payments were selected."
+msgstr "Es wurden keine Zahlungen ausgewählt."
+
+msgid "Removing a payment corrects the revenue figures. The booking itself is not changed."
+msgstr "Das Entfernen einer Zahlung korrigiert die Umsatzzahlen. Die Buchung selbst wird nicht verändert."
+
+msgid "Are you sure you want to delete the selected payments?"
+msgstr "Möchten Sie die ausgewählten Zahlungen wirklich löschen?"
+
+msgid "This action cannot be undone. The revenue and transaction figures will change; the bookings themselves stay as they are."
+msgstr "Diese Aktion kann nicht rückgängig gemacht werden. Umsatz- und Transaktionszahlen ändern sich; die Buchungen selbst bleiben unverändert."
+
+msgid "Delete Payments"
+msgstr "Zahlungen löschen"
+
+msgid "Amount removed:"
+msgstr "Entfernter Betrag:"
+
+msgid "%d payment deleted. Revenue figures have been updated."
+msgid_plural "%d payments deleted. Revenue figures have been updated."
+msgstr[0] "%d Zahlung gelöscht. Die Umsatzzahlen wurden aktualisiert."
+msgstr[1] "%d Zahlungen gelöscht. Die Umsatzzahlen wurden aktualisiert."
+
+msgid "Could not delete payment #%s."
+msgid_plural "Could not delete these payments: #%s."
+msgstr[0] "Zahlung #%s konnte nicht gelöscht werden."
+msgstr[1] "Diese Zahlungen konnten nicht gelöscht werden: #%s."
+
+msgid "from %d payment"
+msgid_plural "from %d payments"
+msgstr[0] "aus %d Zahlung"
+msgstr[1] "aus %d Zahlungen"
+

@@ -24,6 +24,194 @@ class HRB_Payment_Manager {
     }
 
     /**
+     * Parse a submitted list of payment IDs
+     *
+     * The payments list table posts its checked rows as one comma separated
+     * field. Anything that is not a positive integer is dropped, and the result
+     * is de-duplicated.
+     *
+     * @since 1.6.0
+     * @param string|array $raw Raw submitted value
+     * @return array List of positive integer payment IDs
+     */
+    public static function parse_payment_id_list($raw) {
+        $parts = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+        $ids = array_map(static function ($part) {
+            return intval(trim((string) $part));
+        }, $parts);
+
+        $ids = array_filter($ids, static function ($id) {
+            return $id > 0;
+        });
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * Permanently remove payment records
+     *
+     * Used for the month-end correction: a cash payment that never actually
+     * came in is struck off the books. The bookings themselves are left alone —
+     * removing a payment adjusts what was taken, not what was booked.
+     *
+     * @since 1.6.0
+     * @param array $payment_ids Payment IDs to remove
+     * @return array {
+     *     @type int   $deleted Number of rows removed
+     *     @type array $failed  IDs that could not be removed
+     * }
+     */
+    public function delete_payments(array $payment_ids) {
+        global $wpdb;
+
+        $deleted = 0;
+        $failed  = [];
+
+        foreach ($payment_ids as $payment_id) {
+            $payment_id = intval($payment_id);
+            if ($payment_id <= 0) {
+                continue;
+            }
+
+            $result = $wpdb->delete(
+                $wpdb->prefix . 'hrb_payments',
+                ['id' => $payment_id],
+                ['%d']
+            );
+
+            // delete() returns the row count, so 0 means "no such payment".
+            if ($result) {
+                $deleted++;
+
+                /**
+                 * Fires after a payment record has been deleted.
+                 *
+                 * @since 1.6.0
+                 * @param int $payment_id
+                 */
+                do_action('hrb_payment_deleted', $payment_id);
+            } else {
+                $failed[] = $payment_id;
+            }
+        }
+
+        return [
+            'deleted' => $deleted,
+            'failed'  => $failed,
+        ];
+    }
+
+    /**
+     * Work out what a booking is worth from its payment records
+     *
+     * The payment rows are the source of truth for a booking's total, but they
+     * cannot simply be summed. A booking carries at most one *original* charge;
+     * a stale pending row for that charge can survive next to the completed one
+     * (a PayPal capture that took the fallback path leaves exactly that behind),
+     * and summing both bills the customer twice — the reported €87.55 shown as
+     * €175.10. Additional charges (ADD_*) are separate and do add up.
+     *
+     * Rules:
+     * - Cancellation fees (CANCELFEE_*) are a separate penalty, never part of
+     *   the booking total.
+     * - Cancelled, failed and refunded rows do not count.
+     * - The original charge counts once: the completed rows if the money was
+     *   taken, otherwise the most recent pending row.
+     * - Every additional charge counts, completed or still pending.
+     *
+     * @since 1.6.0
+     * @param int $booking_id Booking to total up
+     * @return array {
+     *     @type float $total Booking total
+     *     @type float $fees  Gateway fees inside that total
+     * }
+     */
+    public function calculate_booking_total($booking_id) {
+        global $wpdb;
+
+        $rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT id, transaction_id, amount, fees, status
+             FROM {$wpdb->prefix}hrb_payments
+             WHERE booking_id = %d
+             ORDER BY id ASC",
+            $booking_id
+        ));
+
+        return self::total_from_payment_rows((array) $rows);
+    }
+
+    /**
+     * The pure part of calculate_booking_total()
+     *
+     * Split out so the rules can be exercised without a database.
+     *
+     * @since 1.6.0
+     * @param array $rows Payment rows (objects or arrays) with transaction_id,
+     *                    amount, fees and status
+     * @return array {
+     *     @type float $total
+     *     @type float $fees
+     * }
+     */
+    public static function total_from_payment_rows(array $rows) {
+        $counted = [];
+
+        $original_completed = [];
+        $original_pending   = [];
+
+        foreach ($rows as $row) {
+            $row = (object) $row;
+
+            $transaction_id = isset($row->transaction_id) ? (string) $row->transaction_id : '';
+            $status         = strtolower(trim((string) ($row->status ?? '')));
+
+            // A cancellation fee is charged on top of the booking, not part of it.
+            if (strpos($transaction_id, 'CANCELFEE_') === 0) {
+                continue;
+            }
+
+            if (!in_array($status, ['completed', 'paid', 'pending'], true)) {
+                continue;
+            }
+
+            // Additional charges always count.
+            if (strpos($transaction_id, 'ADD_') === 0) {
+                $counted[] = $row;
+                continue;
+            }
+
+            if ('pending' === $status) {
+                $original_pending[] = $row;
+            } else {
+                $original_completed[] = $row;
+            }
+        }
+
+        if (!empty($original_completed)) {
+            // The charge was taken. Any pending row for it is a leftover.
+            $counted = array_merge($counted, $original_completed);
+        } elseif (!empty($original_pending)) {
+            // Not paid yet: the most recent attempt is the live one, earlier
+            // rows are abandoned checkout attempts.
+            $counted[] = end($original_pending);
+        }
+
+        $total = 0.0;
+        $fees  = 0.0;
+
+        foreach ($counted as $row) {
+            $total += (float) ($row->amount ?? 0);
+            $fees  += (float) ($row->fees ?? 0);
+        }
+
+        return [
+            'total' => round($total, 2),
+            'fees'  => round($fees, 2),
+        ];
+    }
+
+    /**
      * Get payments with filtering and pagination
      */
     public function get_payments($filters = [], $limit = 20, $offset = 0) {

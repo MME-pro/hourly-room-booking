@@ -5,6 +5,31 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-03
+
+### Added
+- **Multiple team notification addresses:** the single "Staff Email" field is replaced by a repeatable list under Company Information. Every address on it receives a notification for each new booking, and addresses can be added or removed at any time. Accepts comma-, semicolon- and newline-separated input, rejects invalid addresses by name instead of dropping them silently, and de-duplicates case-insensitively.
+- **Admin booking of past and current time slots:** a walk-in arriving at 11:05 can now be given the 11:00 slot, and bookings that already happened can be entered afterwards. Past slots appear only for admins, clearly marked "Vergangen — buchbar"; the public booking form is unchanged.
+- **Bulk delete on the bookings list:** a checkbox column with select-all and a "Delete selected" button. The confirmation names the bookings involved; each delete runs in its own transaction, so one failure does not stop the rest and the notice says exactly which bookings were left behind.
+- **Bulk delete on the payments list**, for correcting the books at month-end. The confirmation shows how much money is being struck off. Deleting a payment adjusts the revenue figures only — the booking it belonged to is not changed.
+- **Automatic daily summary email:** a scheduled summary of one day's bookings, per-room usage and revenue, sent to its own list of addresses (falling back to the team addresses). Send time is configurable, default midnight. The summary always covers the whole calendar day that ended at the send time, anchored to the scheduled time rather than the moment the job ran, so a WP-Cron job firing minutes late still reports the day that closed. A "Send summary now" button makes the setup verifiable without waiting.
+
+### Fixed
+- **PayPal booking totals were doubled** on cancellation and on every subsequent edit (€87.55 shown as €175.10). The total was rebuilt as `SUM(completed) + SUM(pending)` over the payment records, so a stale pending row for an already-captured charge was counted twice. A capture whose lookup missed its own pending row inserted a fresh completed row and left the pending one behind, producing exactly that pair. Totals are now computed by a single shared rule — the original charge counts once, additional charges add up, cancellation fees are excluded — the capture matches its row by gateway transaction id first, and any leftover pending rows are retired once the charge is captured.
+- **Cancellation fees were added into the booking total** in the admin edit path (€87.55 + €15 shown as €102.55). They are a separate charge and no longer count towards the booking.
+- **Team notifications were lost when the customer address was missing or invalid.** The team mail was dispatched from inside the customer-mail routine, which returns early in that case. It is now sent independently, and one bad recipient no longer suppresses the mail for the rest of the team.
+- **Internal room moves no longer email the customer.** Moving a booking from Room 2 to Room 3 is invisible to them; any other edit — on its own or alongside the room change — still notifies as before. Price changes caused by the move do not count as a separate edit.
+- **A failed booking delete reported success.** `delete_booking()` returns a `WP_Error` on failure, which is truthy, so the admin notice always said the booking was deleted.
+- **Past-time slots were only detected for today,** so on an earlier date the public search offered every slot as available.
+- The dashboard revenue chart ran 60 queries per load; it now runs two.
+
+### Changed
+- **Dashboard revenue now reflects money actually taken.** "This Month Revenue" and the revenue chart read the payment records instead of `bookings.total_amount`, so a month-end correction on the payments screen shows up on the dashboard. The card also shows how many payments make up the figure. Note this changes the meaning of the number from booked value to collected value.
+- The plugin registers `HRB_Daily_Summary`; its cron event is cleared on deactivation.
+
+### Database
+- `hrb_staff_email` is migrated once into the new `hrb_staff_emails` list. The migration is option-gated, so an address removed from the list is never resurrected.
+
 ## [1.5.0] - 2026-09-03
 
 ### Added

@@ -633,13 +633,29 @@ class HRB_Payment_Handler {
                 return;
             }
 
-            // Update existing pending payment instead of creating new one
+            // Update existing pending payment instead of creating new one.
+            // Match the row this order actually belongs to first: a booking
+            // whose payment_method was switched (or stored with different
+            // casing) misses the method-based lookup, falls through to the
+            // insert below, and leaves its pending row behind — which is what
+            // made the booking total come out doubled.
             $payment_id = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM {$wpdb->prefix}hrb_payments
-                 WHERE booking_id = %d AND payment_method = 'paypal' AND status = 'pending'
+                 WHERE booking_id = %d AND status = 'pending'
+                 AND gateway_transaction_id = %s
                  ORDER BY id DESC LIMIT 1",
-                $booking_id
+                $booking_id,
+                isset($capture_result['id']) ? $capture_result['id'] : ''
             ));
+
+            if (!$payment_id) {
+                $payment_id = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}hrb_payments
+                     WHERE booking_id = %d AND LOWER(payment_method) = 'paypal' AND status = 'pending'
+                     ORDER BY id DESC LIMIT 1",
+                    $booking_id
+                ));
+            }
             
             if ($payment_id) {
                 // Get existing payment to preserve is_additional_payment flag
@@ -760,6 +776,25 @@ class HRB_Payment_Handler {
                         $is_additional_payment = ($payment_check->is_additional_payment == 1);
                     }
                 }
+
+                // The original charge is now captured, so no other pending row
+                // for it can still be live — those are abandoned checkout
+                // attempts, or the row a fallback insert bypassed. Retire them:
+                // left pending they are summed alongside the completed row and
+                // double the booking total. Additional charges (ADD_*) and
+                // cancellation fees are separate and stay untouched.
+                if (!$is_additional_payment) {
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE {$wpdb->prefix}hrb_payments SET status = 'cancelled'
+                         WHERE booking_id = %d AND status = 'pending' AND id <> %d
+                         AND (transaction_id IS NULL
+                              OR (transaction_id NOT LIKE %s AND transaction_id NOT LIKE %s))",
+                        $booking_id,
+                        $payment_id,
+                        $wpdb->esc_like('ADD_') . '%',
+                        $wpdb->esc_like('CANCELFEE_') . '%'
+                    ));
+                }
                
                 // Update booking status - both confirmed and paid, preserving is_anonymous
                 $update_data = array(
@@ -779,32 +814,12 @@ class HRB_Payment_Handler {
                 // This ensures consistency when additional services are added later
                 // Exclude the standalone cancellation-fee charge (CANCELFEE_*) from
                 // these sums — it is a separate penalty, not part of the booking total.
-                $completed_payments_total = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}hrb_payments
-                    WHERE booking_id = %d AND status IN ('completed', 'paid')
-                    AND (transaction_id NOT LIKE 'CANCELFEE%' OR transaction_id IS NULL)",
-                    $booking_id
-                ));
-                $pending_payments_total = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}hrb_payments
-                    WHERE booking_id = %d AND status = 'pending'
-                    AND (transaction_id NOT LIKE 'CANCELFEE%' OR transaction_id IS NULL)",
-                    $booking_id
-                ));
-                $total_amount_from_payments = $completed_payments_total + $pending_payments_total;
+                $booking_totals = HRB_Payment_Manager::getInstance()->calculate_booking_total($booking_id);
 
-                // PayPal fee is sum of all fees in payment records (excluding the cancellation fee)
-                $total_fees_from_payments = $wpdb->get_var($wpdb->prepare(
-                    "SELECT COALESCE(SUM(fees), 0) FROM {$wpdb->prefix}hrb_payments
-                    WHERE booking_id = %d
-                    AND (transaction_id NOT LIKE 'CANCELFEE%' OR transaction_id IS NULL)",
-                    $booking_id
-                ));
-                
                 // Update booking with accurate totals from payment records
                 $booking_manager->update_booking($booking_id, [
-                    'total_amount' => $total_amount_from_payments,
-                    'paypal_fee' => $total_fees_from_payments
+                    'total_amount' => $booking_totals['total'],
+                    'paypal_fee' => $booking_totals['fees']
                 ], false);
                 
                 // For additional payments: regenerate invoice (which sends updated invoice email)
@@ -1535,13 +1550,29 @@ class HRB_Payment_Handler {
                 return true;
             }
 
-            // Update existing pending payment instead of creating new one
+            // Update existing pending payment instead of creating new one.
+            // Match the row this order actually belongs to first: a booking
+            // whose payment_method was switched (or stored with different
+            // casing) misses the method-based lookup, falls through to the
+            // insert below, and leaves its pending row behind — which is what
+            // made the booking total come out doubled.
             $payment_id = $wpdb->get_var($wpdb->prepare(
                 "SELECT id FROM {$wpdb->prefix}hrb_payments
-                 WHERE booking_id = %d AND payment_method = 'paypal' AND status = 'pending'
+                 WHERE booking_id = %d AND status = 'pending'
+                 AND gateway_transaction_id = %s
                  ORDER BY id DESC LIMIT 1",
-                $booking_id
+                $booking_id,
+                isset($capture_result['id']) ? $capture_result['id'] : ''
             ));
+
+            if (!$payment_id) {
+                $payment_id = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}hrb_payments
+                     WHERE booking_id = %d AND LOWER(payment_method) = 'paypal' AND status = 'pending'
+                     ORDER BY id DESC LIMIT 1",
+                    $booking_id
+                ));
+            }
 
             if ($payment_id) {
                 // Update existing payment
@@ -1586,7 +1617,26 @@ class HRB_Payment_Handler {
                 if ($payment_check && isset($payment_check->is_additional_payment)) {
                     $is_additional_payment = ($payment_check->is_additional_payment == 1);
                 }
-                
+
+                // The original charge is now captured, so no other pending row
+                // for it can still be live — those are abandoned checkout
+                // attempts, or the row a fallback insert bypassed. Retire them:
+                // left pending they are summed alongside the completed row and
+                // double the booking total. Additional charges (ADD_*) and
+                // cancellation fees are separate and stay untouched.
+                if (!$is_additional_payment) {
+                    $wpdb->query($wpdb->prepare(
+                        "UPDATE {$wpdb->prefix}hrb_payments SET status = 'cancelled'
+                         WHERE booking_id = %d AND status = 'pending' AND id <> %d
+                         AND (transaction_id IS NULL
+                              OR (transaction_id NOT LIKE %s AND transaction_id NOT LIKE %s))",
+                        $booking_id,
+                        $payment_id,
+                        $wpdb->esc_like('ADD_') . '%',
+                        $wpdb->esc_like('CANCELFEE_') . '%'
+                    ));
+                }
+
                 // Update booking status - both confirmed and paid
                 $booking_manager = HRB_Booking_Manager::getInstance();
                 $booking_manager->update_booking($booking_id, array(

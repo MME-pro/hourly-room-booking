@@ -234,6 +234,59 @@
     color: #1d2327;
 }
 
+/* Bulk actions bar (bookings list) */
+.hrb-bulk-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.hrb-bulk-actions .hrb-bulk-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hrb-bulk-actions .hrb-bulk-delete-btn:not(:disabled) {
+    color: #b32d2e;
+    border-color: #b32d2e;
+}
+
+.hrb-bulk-actions .hrb-bulk-delete-btn:not(:disabled):hover {
+    background: #b32d2e;
+    border-color: #b32d2e;
+    color: #fff;
+}
+
+.hrb-bulk-actions .hrb-bulk-delete-btn .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+}
+
+.hrb-bulk-count {
+    display: inline-block;
+    min-width: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.08);
+    font-size: 12px;
+    line-height: 18px;
+    text-align: center;
+}
+
+.hrb-bulk-hint {
+    color: #646970;
+    font-size: 12px;
+}
+
+/* Nothing selected: the hint carries the instruction, so hide the count. */
+.hrb-bulk-actions .hrb-bulk-delete-btn:disabled .hrb-bulk-count {
+    display: none;
+}
+
 /* Table Container */
 .hrb-table-container {
     overflow-x: auto;
@@ -1520,6 +1573,28 @@ span.stockInfo
         font-weight: 600;
         color: #50575e;
         text-align: left;
+        flex: 0 0 42%;
+        margin-right: 10px;
+    }
+    /* The bulk-select cell is a <th>, so it needs the card treatment too.
+       The header row (and with it "select all") is hidden at this width;
+       rows are still selected one by one. */
+    .wp-list-table.widefat tbody th.check-column,
+    table.widefat tbody th.check-column {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        width: auto !important;
+        padding: 8px 0;
+        border: 0;
+        border-bottom: 1px solid #f0f0f1;
+        text-align: left;
+    }
+    .wp-list-table.widefat tbody th.check-column::before,
+    table.widefat tbody th.check-column::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: #50575e;
         flex: 0 0 42%;
         margin-right: 10px;
     }

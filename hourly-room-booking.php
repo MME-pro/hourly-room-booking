@@ -3,7 +3,7 @@
  * Plugin Name: Hourly Room Booking System
  * Plugin URI: https://mme-pro.de
  * Description: Professional room booking system with hourly slots, payment integration, and comprehensive management features.
- * Version: 1.5.0
+ * Version: 1.6.0
  * Author: MME-Pro Dev Team
  * Author URI: https://mme-pro.de
  * Requires at least: 5.0
@@ -48,7 +48,7 @@ if (defined('HRB_VERSION')) {
  * These constants are used throughout the plugin for consistency
  * and to avoid magic strings in the codebase.
  */
-define('HRB_VERSION', '1.5.0');
+define('HRB_VERSION', '1.6.0');
 define('HRB_MIN_PHP_VERSION', '7.4');
 define('HRB_MIN_WP_VERSION', '5.0');
 define('HRB_PLUGIN_FILE', __FILE__);
@@ -118,6 +118,7 @@ final class HourlyRoomBooking {
         'HRB_Shortcodes'          => 'class-shortcodes.php',
         'HRB_Ajax_Handler'        => 'class-ajax-handler.php',
         'HRB_Updater'             => 'class-updater.php',
+        'HRB_Daily_Summary'       => 'class-daily-summary.php',
     ];
     
     /**
@@ -330,6 +331,10 @@ final class HourlyRoomBooking {
         add_action('admin_init', ['HRB_Database', 'seed_branded_email_templates']);
         add_action('admin_init', ['HRB_Database', 'ensure_price_override_column']);
         add_action('admin_init', ['HRB_Database', 'ensure_room_availability_columns']);
+
+        // One-time move of the legacy single staff address onto the
+        // multi-recipient team notification list. Option-gated.
+        add_action('admin_init', ['HRB_Settings', 'migrate_staff_emails']);
         
         // Admin notices
         add_action('admin_notices', [$this, 'display_admin_notices']);
@@ -373,6 +378,7 @@ final class HourlyRoomBooking {
             $this->components['shortcodes']   = HRB_Shortcodes::getInstance();
             $this->components['ajax_handler'] = HRB_Ajax_Handler::getInstance();
             $this->components['updater']      = HRB_Updater::getInstance();
+            $this->components['daily_summary'] = HRB_Daily_Summary::getInstance();
             
             // Components initialized successfully
             do_action('hrb_components_loaded', $this->components);
@@ -731,6 +737,7 @@ final class HourlyRoomBooking {
         wp_clear_scheduled_hook('hrb_cleanup_expired_bookings');
         wp_clear_scheduled_hook('hrb_send_booking_reminders');
         wp_clear_scheduled_hook('hrb_cleanup_incomplete_payments');
+        wp_clear_scheduled_hook('hrb_daily_summary');
         
         // Clear rewrite rules
         flush_rewrite_rules();

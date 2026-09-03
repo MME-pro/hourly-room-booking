@@ -1213,6 +1213,51 @@ class HRB_Ajax_Handler {
     }
 
     /**
+     * Has a slot already started?
+     *
+     * True for every slot on an earlier date, and for the slots of today that
+     * the clock has already passed. All arguments are plain strings in the
+     * plugin timezone, so they compare lexicographically.
+     *
+     * @param string $slot_date Slot date, Y-m-d
+     * @param string $slot_time Slot start time, H:i
+     * @param string $now_date  Today, Y-m-d
+     * @param string $now_time  Current time, H:i
+     * @return bool
+     */
+    public static function is_slot_in_past($slot_date, $slot_time, $now_date, $now_time) {
+        if ($slot_date < $now_date) {
+            return true;
+        }
+
+        return ($slot_date === $now_date) && ($slot_time < $now_time);
+    }
+
+    /**
+     * Should a slot be closed off because it has already started?
+     *
+     * Public visitors never get past slots. Admins do, on purpose: a walk-in
+     * arriving at 11:05 still needs the 11:00 slot, and a booking that already
+     * happened has to be enterable afterwards. This mirrors the past-date
+     * bypass admin-created bookings already get in
+     * HRB_Booking_Manager::validate_booking_data().
+     *
+     * @param string $slot_date        Slot date, Y-m-d
+     * @param string $slot_time        Slot start time, H:i
+     * @param string $now_date         Today, Y-m-d
+     * @param string $now_time         Current time, H:i
+     * @param bool   $is_admin_request Capability-checked admin request
+     * @return bool
+     */
+    public static function is_slot_blocked_as_past($slot_date, $slot_time, $now_date, $now_time, $is_admin_request) {
+        if ($is_admin_request) {
+            return false;
+        }
+
+        return self::is_slot_in_past($slot_date, $slot_time, $now_date, $now_time);
+    }
+
+    /**
      * Generate available time slots for a given date and duration
      */
     public function generate_available_time_slots($room_id, $date, $duration, $booking_id = 0, $is_admin_param = false) {
@@ -1277,10 +1322,9 @@ class HRB_Ajax_Handler {
         $original_timezone = date_default_timezone_get();
         date_default_timezone_set($plugin_timezone);
         
-        // Check if the selected date is today (using plugin timezone)
+        // "Now" in the plugin timezone, used to decide which slots have passed.
         $today = date('Y-m-d');
         $current_time = date('H:i');
-        $is_today = ($date === $today);
         
         
         
@@ -1295,9 +1339,9 @@ class HRB_Ajax_Handler {
 
                 $start_time = sprintf('%02d:%s:00', $hour, $minute);
 
-                // Check if this time slot has already passed (for today only)
+                // Has this slot already started?
                 $slot_time = sprintf('%02d:%s', $hour, $minute);
-                $is_past_time = $is_today && ($slot_time < $current_time);
+                $is_past_time = self::is_slot_in_past($date, $slot_time, $today, $current_time);
                 
                 
                 $slot_end_minutes = $start_minutes + ($duration * 60);
@@ -1376,8 +1420,8 @@ class HRB_Ajax_Handler {
                 }
                 // Note: For admin, even if locked, $is_available remains true (if no real conflicts)
                 
-                // If it's a past time slot, mark it as unavailable
-                if ($is_past_time) {
+                // Past slots stay closed to the public; admins keep them.
+                if (self::is_slot_blocked_as_past($date, $slot_time, $today, $current_time, $is_admin_request)) {
                     $is_available = false;
                 }
                 
@@ -1406,7 +1450,8 @@ class HRB_Ajax_Handler {
                     'available' => $is_available,
                     'is_current_booking' => $is_current_booking_slot,
                     'is_locked' => $is_locked,
-                    'lock_type' => $lock_type // 'master' or 'room' or null
+                    'lock_type' => $lock_type, // 'master' or 'room' or null
+                    'is_past' => $is_past_time // start time already gone by
                 );
                 
                 // Add all slots (both available and unavailable)

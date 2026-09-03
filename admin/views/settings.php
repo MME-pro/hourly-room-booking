@@ -78,8 +78,11 @@ class HRB_Settings_Helper {
             'hrb_company_logo' => __('Company Logo', 'hourly-room-booking'),
             'hrb_admin_email' => __('Admin Email', 'hourly-room-booking'),
             'hrb_admin_email_notifications' => __('Admin Email Notifications', 'hourly-room-booking'),
-            'hrb_staff_email' => __('Staff Email', 'hourly-room-booking'),
-            'hrb_staff_email_notifications' => __('Staff Email Notifications', 'hourly-room-booking'),
+            'hrb_staff_emails' => __('Team Notification Emails', 'hourly-room-booking'),
+            'hrb_staff_email_notifications' => __('Team Email Notifications', 'hourly-room-booking'),
+            'hrb_daily_summary_enabled' => __('Daily Summary Email', 'hourly-room-booking'),
+            'hrb_daily_summary_emails' => __('Daily Summary Recipients', 'hourly-room-booking'),
+            'hrb_daily_summary_time' => __('Daily Summary Send Time', 'hourly-room-booking'),
             'hrb_pricing_label' => __('Pricing Label', 'hourly-room-booking'),
             'hrb_terms_page' => __('Terms & Conditions Page', 'hourly-room-booking'),
             'hrb_privacy_page' => __('Privacy Policy Page', 'hourly-room-booking'),
@@ -167,8 +170,11 @@ class HRB_Settings_Helper {
             'hrb_company_logo' => __('Company logo that will appear on invoices (recommended size: 200x100px)', 'hourly-room-booking'),
             'hrb_pricing_label' => __('Custom label to display with pricing (e.g., "Starting from", "From", etc.)', 'hourly-room-booking'),
             'hrb_admin_email_notifications' => __('Send booking notifications to admin email', 'hourly-room-booking'),
-            'hrb_staff_email' => __('Staff email address for notifications', 'hourly-room-booking'),
-            'hrb_staff_email_notifications' => __('Send booking notifications to staff email', 'hourly-room-booking'),
+            'hrb_staff_emails' => __('Everyone listed here gets an email for every new booking. Add or remove addresses at any time.', 'hourly-room-booking'),
+            'hrb_staff_email_notifications' => __('Send booking notifications to the team addresses listed above', 'hourly-room-booking'),
+            'hrb_daily_summary_enabled' => __('Send an automatic daily summary of bookings, room usage and revenue', 'hourly-room-booking'),
+            'hrb_daily_summary_emails' => __('Who receives the daily summary. Leave empty to use the team addresses above.', 'hourly-room-booking'),
+            'hrb_daily_summary_time' => __('When the summary is sent. At 00:00 it covers the day that just ended; at any later time it covers the current day up to that point.', 'hourly-room-booking'),
             'hrb_plugin_language' => __('Select the language for the plugin interface. This overrides the WordPress site language for this plugin only.', 'hourly-room-booking'),
         // Customizable Labels Descriptions
         'hrb_use_custom_labels' => __('Enable to use custom labels instead of translated text. When disabled, labels will be automatically translated based on the selected language.', 'hourly-room-booking'),
@@ -238,6 +244,8 @@ class HRB_Settings_Helper {
                          'hrb_invoice_counter', 'hrb_tax_rate'];
 
         $email_fields = ['hrb_company_email', 'hrb_admin_email', 'hrb_staff_email'];
+        $email_list_fields = ['hrb_staff_emails', 'hrb_daily_summary_emails'];
+        $time_fields = ['hrb_daily_summary_time'];
         $password_fields = ['hrb_paypal_client_secret', 'hrb_twilio_token', 'hrb_whatsapp_token'];
         $textarea_fields = ['hrb_company_address'];
         $file_fields = ['hrb_company_logo'];
@@ -245,6 +253,8 @@ class HRB_Settings_Helper {
 
         if (in_array($key, $boolean_fields)) return 'checkbox';
         if (in_array($key, $number_fields)) return 'number';
+        if (in_array($key, $email_list_fields)) return 'email_list';
+        if (in_array($key, $time_fields)) return 'time';
         if (in_array($key, $email_fields)) return 'email';
         if (in_array($key, $password_fields)) return 'password';
         if (in_array($key, $textarea_fields)) return 'textarea';
@@ -287,7 +297,8 @@ class HRB_Settings_Helper {
             'hrb_company_vat_id' => __('Enter company VAT ID (Umsatzsteuer ID)', 'hourly-room-booking'),
             'hrb_company_logo' => __('Upload company logo for invoices', 'hourly-room-booking'),
             'hrb_admin_email' => __('Enter admin email', 'hourly-room-booking'),
-            'hrb_staff_email' => __('Enter staff email', 'hourly-room-booking'),
+            'hrb_staff_emails' => __('name@example.com', 'hourly-room-booking'),
+            'hrb_daily_summary_emails' => __('name@example.com', 'hourly-room-booking'),
             'hrb_pricing_label' => __('Enter pricing label (e.g., "Starting from")', 'hourly-room-booking'),
         ];
 
@@ -344,6 +355,18 @@ $helper = new HRB_Settings_Helper();
 
 <div class="wrap hrb-settings-wrap">
     <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+
+    <?php
+    // Result of the "Send summary now" action, set just before the redirect.
+    $hrb_summary_notice = get_transient('hrb_daily_summary_notice');
+    if ($hrb_summary_notice) {
+        delete_transient('hrb_daily_summary_notice');
+        printf(
+            '<div class="notice notice-info is-dismissible"><p>%s</p></div>',
+            esc_html($hrb_summary_notice)
+        );
+    }
+    ?>
 
     <div class="hrb-settings-header">
         <div class="hrb-settings-actions">
@@ -461,6 +484,90 @@ $helper = new HRB_Settings_Helper();
                                                 placeholder="<?php echo esc_attr($helper->get_setting_placeholder($setting_key)); ?>"
                                             ><?php echo esc_textarea($field_value); ?></textarea>
 
+                                        <?php elseif ($field_type === 'email_list'):
+                                            $list_emails = hrb_parse_email_list($field_value);
+                                            if (empty($list_emails)) {
+                                                // Always render one empty row so there is
+                                                // something to type into and to clone from.
+                                                $list_emails = [''];
+                                            }
+                                            ?>
+                                            <div class="hrb-email-list" data-setting-key="<?php echo esc_attr($setting_key); ?>">
+                                                <input
+                                                    type="hidden"
+                                                    class="hrb-email-list-value"
+                                                    name="settings[<?php echo esc_attr($setting_key); ?>]"
+                                                    value="<?php echo esc_attr(implode(', ', $list_emails)); ?>"
+                                                >
+
+                                                <div class="hrb-email-list-rows">
+                                                    <?php foreach ($list_emails as $row_index => $list_email): ?>
+                                                        <div class="hrb-email-list-row">
+                                                            <input
+                                                                type="email"
+                                                                class="hrb-email-list-input"
+                                                                <?php if ($row_index === 0): ?>id="<?php echo esc_attr($setting_key); ?>"<?php endif; ?>
+                                                                value="<?php echo esc_attr($list_email); ?>"
+                                                                placeholder="<?php echo esc_attr($helper->get_setting_placeholder($setting_key)); ?>"
+                                                            >
+                                                            <button
+                                                                type="button"
+                                                                class="button hrb-email-list-remove"
+                                                                title="<?php esc_attr_e('Remove this address', 'hourly-room-booking'); ?>"
+                                                            >
+                                                                <span class="dashicons dashicons-no-alt"></span>
+                                                                <span class="screen-reader-text"><?php esc_html_e('Remove this address', 'hourly-room-booking'); ?></span>
+                                                            </button>
+                                                        </div>
+                                                    <?php endforeach; ?>
+                                                </div>
+
+                                                <button type="button" class="button hrb-email-list-add">
+                                                    <span class="dashicons dashicons-plus-alt2"></span>
+                                                    <?php esc_html_e('Add email address', 'hourly-room-booking'); ?>
+                                                </button>
+                                            </div>
+
+                                        <?php elseif ($setting_key === 'hrb_daily_summary_time'):
+                                            $next_run = wp_next_scheduled(HRB_Daily_Summary::CRON_HOOK);
+                                            $send_now_url = wp_nonce_url(
+                                                add_query_arg('hrb-send-daily-summary', '1', self_admin_url('admin.php?page=hrb-settings')),
+                                                'hrb_send_daily_summary'
+                                            );
+                                            ?>
+                                            <div class="hrb-time-setting">
+                                                <input
+                                                    type="time"
+                                                    id="<?php echo esc_attr($setting_key); ?>"
+                                                    name="settings[<?php echo esc_attr($setting_key); ?>]"
+                                                    value="<?php echo esc_attr(HRB_Daily_Summary::normalize_time($field_value)); ?>"
+                                                >
+
+                                                <a href="<?php echo esc_url($send_now_url); ?>" class="button">
+                                                    <span class="dashicons dashicons-email-alt"></span>
+                                                    <?php esc_html_e('Send summary now', 'hourly-room-booking'); ?>
+                                                </a>
+                                            </div>
+
+                                            <?php if ($next_run): ?>
+                                                <p class="description">
+                                                    <?php
+                                                    printf(
+                                                        /* translators: %s: date and time of the next scheduled summary */
+                                                        esc_html__('Next summary: %s', 'hourly-room-booking'),
+                                                        esc_html(wp_date(
+                                                            get_option('hrb_date_format', 'd.m.Y') . ' ' . get_option('hrb_time_format', 'H:i'),
+                                                            $next_run
+                                                        ))
+                                                    );
+                                                    ?>
+                                                </p>
+                                            <?php else: ?>
+                                                <p class="description">
+                                                    <?php esc_html_e('Not scheduled — switch the daily summary on and save to schedule it.', 'hourly-room-booking'); ?>
+                                                </p>
+                                            <?php endif; ?>
+
                                         <?php elseif ($field_type === 'password'): ?>
                                             <input
                                                 type="password"
@@ -563,6 +670,57 @@ jQuery(document).ready(function($) {
         if (confirm(confirmMessage)) {
             resetSettings();
         }
+    });
+
+    // Repeatable email lists (e.g. the team notification addresses).
+    // The visible rows carry no name attribute, so saveSettings() never sees
+    // them; they are mirrored into one hidden "settings[key]" input instead.
+    function syncEmailList($wrapper) {
+        var values = [];
+
+        $wrapper.find('.hrb-email-list-input').each(function() {
+            var value = $.trim($(this).val());
+            if (value) {
+                values.push(value);
+            }
+        });
+
+        $wrapper.find('.hrb-email-list-value').val(values.join(', '));
+    }
+
+    $(document).on('input change', '.hrb-email-list-input', function() {
+        syncEmailList($(this).closest('.hrb-email-list'));
+    });
+
+    $(document).on('click', '.hrb-email-list-add', function(e) {
+        e.preventDefault();
+
+        var $wrapper = $(this).closest('.hrb-email-list');
+        var $rows = $wrapper.find('.hrb-email-list-rows');
+        var $row = $rows.find('.hrb-email-list-row').last().clone();
+
+        // The cloned row may carry the first row's id, which must stay unique.
+        $row.find('.hrb-email-list-input').val('').removeAttr('id');
+        $rows.append($row);
+        $row.find('.hrb-email-list-input').trigger('focus');
+
+        syncEmailList($wrapper);
+    });
+
+    $(document).on('click', '.hrb-email-list-remove', function(e) {
+        e.preventDefault();
+
+        var $wrapper = $(this).closest('.hrb-email-list');
+        var $row = $(this).closest('.hrb-email-list-row');
+
+        // Keep one row around so the list can never become un-editable.
+        if ($wrapper.find('.hrb-email-list-row').length > 1) {
+            $row.remove();
+        } else {
+            $row.find('.hrb-email-list-input').val('');
+        }
+
+        syncEmailList($wrapper);
     });
 
     function saveSettings() {
@@ -987,6 +1145,80 @@ jQuery(document).ready(function($) {
 .hrb-setting-field textarea {
     resize: vertical;
     min-height: 100px;
+}
+
+.hrb-time-setting {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.hrb-time-setting input[type="time"] {
+    max-width: 160px;
+}
+
+.hrb-time-setting .button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.hrb-time-setting .button .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+}
+
+.hrb-email-list-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.hrb-email-list-row {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    max-width: 460px;
+}
+
+.hrb-email-list-row .hrb-email-list-input {
+    flex: 1;
+    max-width: none;
+}
+
+.hrb-email-list-remove,
+.hrb-email-list-add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.hrb-email-list-remove {
+    /* Stretches to whatever height the input ends up with. */
+    flex: 0 0 44px;
+    padding: 0;
+    color: #b91c1c;
+}
+
+.hrb-email-list-remove:hover {
+    color: #7f1d1d;
+    border-color: #b91c1c;
+}
+
+.hrb-email-list-remove .dashicons {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+}
+
+.hrb-email-list-add .dashicons {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
 }
 
 .hrb-checkbox-wrapper {

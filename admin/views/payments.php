@@ -12,6 +12,49 @@ if (!defined('ABSPATH')) {
 // Get payment manager and stats
 $payment_manager = HRB_Payment_Manager::getInstance();
 
+// Month-end correction: remove payment records selected in the list table.
+// Only the payment rows go; the bookings they belong to are left untouched,
+// because this adjusts what was actually taken, not what was booked.
+$hrb_payment_notices = [];
+
+if (!empty($_POST['hrb_payment_action']) && $_POST['hrb_payment_action'] === 'bulk_delete_payments') {
+    check_admin_referer('hrb_payments_bulk', 'hrb_payments_nonce');
+
+    if (!current_user_can('hrb_manage_payments')) {
+        $hrb_payment_notices[] = ['error', __('You are not allowed to delete payments.', 'hourly-room-booking')];
+    } else {
+        $hrb_delete_ids = HRB_Payment_Manager::parse_payment_id_list($_POST['payment_ids'] ?? '');
+
+        if (empty($hrb_delete_ids)) {
+            $hrb_payment_notices[] = ['warning', __('No payments were selected.', 'hourly-room-booking')];
+        } else {
+            $hrb_delete_result = $payment_manager->delete_payments($hrb_delete_ids);
+
+            if ($hrb_delete_result['deleted'] > 0) {
+                $hrb_payment_notices[] = ['success', sprintf(
+                    /* translators: %d: number of payments deleted */
+                    _n('%d payment deleted. Revenue figures have been updated.',
+                       '%d payments deleted. Revenue figures have been updated.',
+                       $hrb_delete_result['deleted'],
+                       'hourly-room-booking'),
+                    $hrb_delete_result['deleted']
+                )];
+            }
+
+            if (!empty($hrb_delete_result['failed'])) {
+                $hrb_payment_notices[] = ['error', sprintf(
+                    /* translators: %s: comma separated list of payment IDs */
+                    _n('Could not delete payment #%s.',
+                       'Could not delete these payments: #%s.',
+                       count($hrb_delete_result['failed']),
+                       'hourly-room-booking'),
+                    esc_html(implode(', #', $hrb_delete_result['failed']))
+                )];
+            }
+        }
+    }
+}
+
 // Handle filters and pagination
 $filters = [
     'status' => sanitize_text_field($_GET['status'] ?? ''),
@@ -41,6 +84,10 @@ $currency_symbol = hrb_get_currency_symbol();
 <div class="hrb-admin-page">
     <div class="hrb-page-header">
         <div class="hrb-page-title">
+            <?php foreach ($hrb_payment_notices as $hrb_notice): ?>
+                <div class="notice notice-<?php echo esc_attr($hrb_notice[0]); ?>"><p><?php echo esc_html($hrb_notice[1]); ?></p></div>
+            <?php endforeach; ?>
+
             <h1><?php _e('Payment Management', 'hourly-room-booking'); ?></h1>
             <p class="description"><?php _e('Manage payment transactions, process refunds, and view payment analytics.', 'hourly-room-booking'); ?></p>
         </div>
@@ -129,6 +176,23 @@ $currency_symbol = hrb_get_currency_symbol();
 
     <!-- Payments Table -->
     <div class="hrb-table-container">
+        <?php if (current_user_can('hrb_manage_payments') && !empty($payments)): ?>
+            <?php // The row checkboxes are mirrored into this form's hidden field on submit. ?>
+            <form method="POST" id="hrb-bulk-delete-payments-form" class="hrb-bulk-actions">
+                <?php wp_nonce_field('hrb_payments_bulk', 'hrb_payments_nonce'); ?>
+                <input type="hidden" name="hrb_payment_action" value="bulk_delete_payments">
+                <input type="hidden" name="payment_ids" id="hrb-bulk-payment-ids" value="">
+
+                <button type="button" id="hrb-bulk-delete-payments-btn" class="button hrb-bulk-delete-btn" disabled>
+                    <span class="dashicons dashicons-trash"></span>
+                    <?php _e('Delete selected', 'hourly-room-booking'); ?>
+                    <span class="hrb-bulk-count" id="hrb-bulk-payment-count">0</span>
+                </button>
+
+                <span class="hrb-bulk-hint"><?php _e('Removing a payment corrects the revenue figures. The booking itself is not changed.', 'hourly-room-booking'); ?></span>
+            </form>
+        <?php endif; ?>
+
         <table class="wp-list-table widefat striped payments">
             <thead>
                 <tr>
@@ -148,7 +212,7 @@ $currency_symbol = hrb_get_currency_symbol();
             <tbody>
                 <?php if (!empty($payments)): ?>
                     <?php foreach ($payments as $payment): ?>
-                        <tr data-payment-id="<?php echo $payment->id; ?>">
+                        <tr data-payment-id="<?php echo $payment->id; ?>" data-payment-amount="<?php echo esc_attr($payment->amount); ?>">
                             <th scope="row" class="check-column">
                                 <input type="checkbox" name="payment[]" value="<?php echo $payment->id; ?>">
                             </th>
@@ -1183,9 +1247,87 @@ $currency_symbol = hrb_get_currency_symbol();
         }
     });
 
-    // Select all functionality
-    document.getElementById('cb-select-all').addEventListener('change', function() {
-        const checkboxes = document.querySelectorAll('input[name="payment[]"]');
-        checkboxes.forEach(cb => cb.checked = this.checked);
+    // Selection + bulk delete.
+    //
+    // The row checkboxes live inside the table; their values are mirrored into
+    // the bulk form's hidden field right before it is submitted.
+    jQuery(document).ready(function($) {
+        var $selectAll = $('#cb-select-all');
+        var $form = $('#hrb-bulk-delete-payments-form');
+        var $button = $('#hrb-bulk-delete-payments-btn');
+        var $count = $('#hrb-bulk-payment-count');
+        var $ids = $('#hrb-bulk-payment-ids');
+
+        function boxes() {
+            return $('input[name="payment[]"]');
+        }
+
+        function refresh() {
+            var $checked = boxes().filter(':checked');
+            var total = boxes().length;
+
+            $count.text($checked.length);
+            $button.prop('disabled', $checked.length === 0);
+
+            $selectAll.prop('checked', total > 0 && $checked.length === total);
+            $selectAll.prop('indeterminate', $checked.length > 0 && $checked.length < total);
+        }
+
+        $selectAll.on('change', function() {
+            boxes().prop('checked', $(this).is(':checked'));
+            refresh();
+        });
+
+        $(document).on('change', 'input[name="payment[]"]', refresh);
+
+        $button.on('click', function(e) {
+            e.preventDefault();
+
+            var $checked = boxes().filter(':checked');
+            if (!$checked.length) {
+                return;
+            }
+
+            var ids = $checked.map(function() { return $(this).val(); }).get();
+
+            // Show what is actually being struck off the books.
+            var total = 0;
+            $checked.each(function() {
+                var amount = parseFloat($(this).closest('tr').attr('data-payment-amount'));
+                if (!isNaN(amount)) {
+                    total += amount;
+                }
+            });
+
+            window.hrbShowAlertDialog(
+                <?php echo json_encode(__('Are you sure you want to delete the selected payments?', 'hourly-room-booking')); ?>,
+                {
+                    warningMessage: <?php echo json_encode(__('This action cannot be undone. The revenue and transaction figures will change; the bookings themselves stay as they are.', 'hourly-room-booking')); ?>,
+                    title: <?php echo json_encode(__('Delete Payments', 'hourly-room-booking')); ?>,
+                    details: [
+                        {
+                            label: <?php echo json_encode(__('Selected:', 'hourly-room-booking')); ?>,
+                            value: ids.length,
+                            class: 'original'
+                        },
+                        {
+                            label: <?php echo json_encode(__('Amount removed:', 'hourly-room-booking')); ?>,
+                            value: '<?php echo esc_js($currency_symbol); ?>' + total.toFixed(2),
+                            class: 'original'
+                        }
+                    ],
+                    confirmText: <?php echo json_encode(__('Delete', 'hourly-room-booking')); ?>,
+                    cancelText: <?php echo json_encode(__('Cancel', 'hourly-room-booking')); ?>,
+                    type: 'danger'
+                },
+                function() {
+                    $ids.val(ids.join(','));
+                    $button.prop('disabled', true);
+                    $form.get(0).submit();
+                }
+            );
+        });
+
+        refresh();
     });
 </script>

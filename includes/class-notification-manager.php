@@ -57,6 +57,13 @@ class HRB_Notification_Manager {
         
         // Send email notification
         if (get_option('hrb_email_notifications', 1)) {
+            // Notify the team first and independently of the customer email:
+            // send_email_notification() bails out when the customer address
+            // is missing or invalid, which used to swallow the team mail too.
+            if (in_array($event, array('booking_confirmation', 'payment_confirmation'), true)) {
+                $notifications_sent['team_email'] = $this->send_admin_notification($booking, $event);
+            }
+
             $email_result = $this->send_email_notification($booking, $event, $custom_data);
             $notifications_sent['email'] = $email_result;
         }
@@ -150,11 +157,10 @@ class HRB_Notification_Manager {
             }
         }
         
-        // Send separate admin notifications
-        if (in_array($event, array('booking_confirmation', 'payment_confirmation'))) {
-            $this->send_admin_notification($booking, $event);
-        }
-        
+        // Note: the team notification is dispatched from send_notification()
+        // instead of here, so that a booking with a missing or invalid
+        // customer address still reaches the team.
+
         // Log email attempt
         /* removed error_log - production cleanup */
         
@@ -199,24 +205,24 @@ class HRB_Notification_Manager {
             return false;
         }
         
-        // Send to admin email if enabled
-        if ($settings->get('hrb_admin_email_notifications', 1)) {
-            $admin_email = $settings->get('hrb_admin_email', '');
-            if (empty($admin_email)) {
-                $admin_email = get_option('admin_email');
-            }
-            if (!empty($admin_email)) {
-                $this->send_admin_email($admin_email, $template_data, $booking, $event);
+        $recipients = $settings->get_notification_recipients();
+
+        if (empty($recipients)) {
+            return false;
+        }
+
+        // One wp_mail call per address rather than a single multi-recipient
+        // call: a bounce or a rejected address cannot then suppress the
+        // notification for the rest of the team, and the notification log
+        // keeps one row per recipient.
+        $sent = false;
+        foreach ($recipients as $recipient) {
+            if ($this->send_admin_email($recipient, $template_data, $booking, $event)) {
+                $sent = true;
             }
         }
-        
-        // Send to staff email if enabled
-        if ($settings->get('hrb_staff_email_notifications', 0)) {
-            $staff_email = $settings->get('hrb_staff_email', '');
-            if (!empty($staff_email)) {
-                $this->send_admin_email($staff_email, $template_data, $booking, $event);
-            }
-        }
+
+        return $sent;
     }
     
     /**

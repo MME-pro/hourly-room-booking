@@ -1947,13 +1947,20 @@ class HRB_Admin {
             AND status NOT IN ('cancelled', 'no_show')
         ", $today));
 
-        // This month's revenue
-        $month_revenue = $wpdb->get_var($wpdb->prepare("
-            SELECT COALESCE(SUM(total_amount), 0)
-            FROM {$wpdb->prefix}hrb_bookings
-            WHERE booking_date BETWEEN %s AND %s
-            AND status IN ('confirmed', 'completed')
+        // This month's revenue, taken from the payment records rather than from
+        // the bookings table. The payment rows are what the team corrects at
+        // month-end (deleting a cash payment that never came in, for example),
+        // so the figure has to follow them. A payment counts on the day the
+        // money was taken.
+        $month_money = $wpdb->get_row($wpdb->prepare("
+            SELECT COALESCE(SUM(amount), 0) AS revenue, COUNT(*) AS transactions
+            FROM {$wpdb->prefix}hrb_payments
+            WHERE status IN ('completed', 'paid')
+            AND DATE(COALESCE(processed_at, created_at)) BETWEEN %s AND %s
         ", $month_start, $month_end));
+
+        $month_revenue = $month_money ? $month_money->revenue : 0;
+        $month_transactions = $month_money ? $month_money->transactions : 0;
 
         // Total active rooms
         $total_rooms = $wpdb->get_var("
@@ -1973,6 +1980,7 @@ class HRB_Admin {
         return [
             'today_bookings' => intval($today_bookings),
             'month_revenue' => floatval($month_revenue),
+            'month_transactions' => intval($month_transactions),
             'total_rooms' => intval($total_rooms),
             'pending_payments' => intval($pending_payments)
         ];
@@ -2081,35 +2089,39 @@ class HRB_Admin {
 
         global $wpdb;
 
-        // Get data for last 30 days
-        $data = [];
+        // Last 30 days. Two grouped queries rather than two per day.
+        $first_date = date('Y-m-d', strtotime('-29 days'));
+        $last_date  = date('Y-m-d');
+
+        $booking_rows = $wpdb->get_results($wpdb->prepare("
+            SELECT booking_date AS day, COUNT(*) AS bookings
+            FROM {$wpdb->prefix}hrb_bookings
+            WHERE booking_date BETWEEN %s AND %s
+            AND status NOT IN ('cancelled', 'no_show')
+            GROUP BY booking_date
+        ", $first_date, $last_date), OBJECT_K);
+
+        // Revenue follows the payment records, so a correction made on the
+        // payments screen shows up here too.
+        $revenue_rows = $wpdb->get_results($wpdb->prepare("
+            SELECT DATE(COALESCE(processed_at, created_at)) AS day,
+                   COALESCE(SUM(amount), 0) AS revenue
+            FROM {$wpdb->prefix}hrb_payments
+            WHERE status IN ('completed', 'paid')
+            AND DATE(COALESCE(processed_at, created_at)) BETWEEN %s AND %s
+            GROUP BY DATE(COALESCE(processed_at, created_at))
+        ", $first_date, $last_date), OBJECT_K);
+
         $labels = [];
         $bookings = [];
         $revenue = [];
 
         for ($i = 29; $i >= 0; $i--) {
             $date = date('Y-m-d', strtotime("-{$i} days"));
-            $display_date = date('M j', strtotime($date));
 
-            // Get bookings count for this date
-            $booking_count = $wpdb->get_var($wpdb->prepare("
-                SELECT COUNT(*)
-                FROM {$wpdb->prefix}hrb_bookings
-                WHERE booking_date = %s
-                AND status NOT IN ('cancelled', 'no_show')
-            ", $date));
-
-            // Get revenue for this date
-            $day_revenue = $wpdb->get_var($wpdb->prepare("
-                SELECT COALESCE(SUM(total_amount), 0)
-                FROM {$wpdb->prefix}hrb_bookings
-                WHERE booking_date = %s
-                AND status IN ('confirmed', 'completed')
-            ", $date));
-
-            $labels[] = $display_date;
-            $bookings[] = intval($booking_count);
-            $revenue[] = floatval($day_revenue);
+            $labels[]   = date('M j', strtotime($date));
+            $bookings[] = isset($booking_rows[$date]) ? intval($booking_rows[$date]->bookings) : 0;
+            $revenue[]  = isset($revenue_rows[$date]) ? floatval($revenue_rows[$date]->revenue) : 0.0;
         }
 
         wp_send_json_success([

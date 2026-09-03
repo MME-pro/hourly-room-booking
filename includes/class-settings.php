@@ -275,10 +275,17 @@ class HRB_Settings {
             'type' => 'email',
             'sanitize' => 'sanitize_email'
         ],
+        // Legacy single staff address. Kept so stored values still validate;
+        // migrated into hrb_staff_emails and no longer read or shown.
         'hrb_staff_email' => [
             'default' => '',
             'type' => 'email',
             'sanitize' => 'sanitize_email'
+        ],
+        'hrb_staff_emails' => [
+            'default' => '',
+            'type' => 'email_list',
+            'sanitize' => 'hrb_sanitize_email_list'
         ],
         'hrb_pricing_label' => [
             'default' => '',
@@ -294,6 +301,23 @@ class HRB_Settings {
             'default' => 0,
             'type' => 'boolean',
             'sanitize' => 'absint'
+        ],
+
+        // Daily summary
+        'hrb_daily_summary_enabled' => [
+            'default' => 0,
+            'type' => 'boolean',
+            'sanitize' => 'absint'
+        ],
+        'hrb_daily_summary_emails' => [
+            'default' => '',
+            'type' => 'email_list',
+            'sanitize' => 'hrb_sanitize_email_list'
+        ],
+        'hrb_daily_summary_time' => [
+            'default' => '00:00',
+            'type' => 'time',
+            'sanitize' => 'hrb_sanitize_time_of_day'
         ],
 
         // Legal pages
@@ -942,6 +966,31 @@ class HRB_Settings {
                 }
                 break;
 
+            case 'time':
+                if (!empty($value) && !preg_match('/^\d{1,2}:\d{1,2}(?::\d{1,2})?$/', trim((string) $value))) {
+                    return __('Enter a time as HH:MM', 'hourly-room-booking');
+                }
+                if (!empty($value) && hrb_sanitize_time_of_day($value) === '' ) {
+                    return __('Enter a time as HH:MM', 'hourly-room-booking');
+                }
+                break;
+
+            case 'email_list':
+                $invalid = hrb_invalid_emails_in_list($value);
+                if (!empty($invalid)) {
+                    return sprintf(
+                        /* translators: %s: comma separated list of the addresses that were rejected */
+                        _n(
+                            'Invalid email address: %s',
+                            'Invalid email addresses: %s',
+                            count($invalid),
+                            'hourly-room-booking'
+                        ),
+                        implode(', ', $invalid)
+                    );
+                }
+                break;
+
             case 'integer':
                 if ($value !== '' && (!is_numeric($value) || floatval($value) != intval($value))) {
                     return __('Must be a whole number', 'hourly-room-booking');
@@ -1078,7 +1127,10 @@ class HRB_Settings {
                     'hrb_twilio_token',
                     'hrb_twilio_from',
                     'hrb_whatsapp_token',
-                    'hrb_whatsapp_phone_id'
+                    'hrb_whatsapp_phone_id',
+                    'hrb_daily_summary_enabled',
+                    'hrb_daily_summary_emails',
+                    'hrb_daily_summary_time'
                 ]
             ],
             'company' => [
@@ -1092,7 +1144,7 @@ class HRB_Settings {
                     'hrb_company_logo',
                     'hrb_admin_email',
                     'hrb_admin_email_notifications',
-                    'hrb_staff_email',
+                    'hrb_staff_emails',
                     'hrb_staff_email_notifications'
                 ]
             ],
@@ -1249,6 +1301,88 @@ class HRB_Settings {
     }
 
     /**
+     * Get a list-type setting as an array of trimmed values
+     *
+     * @since 1.6.0
+     * @param string $key Setting key
+     * @return array
+     */
+    public function get_list(string $key): array {
+        return hrb_parse_email_list($this->get($key, ''));
+    }
+
+    /**
+     * Get every address that should receive team booking notifications
+     *
+     * This is the single source of truth for who the team notification goes
+     * to: the admin address (when enabled) plus every address on the team
+     * list (when enabled), validated and de-duplicated case-insensitively.
+     *
+     * @since 1.6.0
+     * @return array List of email addresses
+     */
+    public function get_notification_recipients(): array {
+        $recipients = [];
+
+        if ($this->get('hrb_admin_email_notifications', 1)) {
+            $admin_email = $this->get('hrb_admin_email', '');
+            if (empty($admin_email)) {
+                $admin_email = get_option('admin_email');
+            }
+            if (!empty($admin_email)) {
+                $recipients[] = $admin_email;
+            }
+        }
+
+        if ($this->get('hrb_staff_email_notifications', 0)) {
+            $recipients = array_merge($recipients, $this->get_list('hrb_staff_emails'));
+        }
+
+        $unique = [];
+        foreach ($recipients as $recipient) {
+            $email = sanitize_email($recipient);
+            $key   = strtolower($email);
+
+            if (!empty($email) && is_email($email) && !isset($unique[$key])) {
+                $unique[$key] = $email;
+            }
+        }
+
+        /**
+         * Filter the addresses that receive team booking notifications.
+         *
+         * @since 1.6.0
+         * @param array $recipients List of email addresses
+         */
+        return apply_filters('hrb_notification_recipients', array_values($unique));
+    }
+
+    /**
+     * Move the legacy single staff address onto the team list
+     *
+     * Runs once per site. Option-gated so it cannot resurrect an address the
+     * team has since removed from the list.
+     *
+     * @since 1.6.0
+     */
+    public static function migrate_staff_emails(): void {
+        if (get_option('hrb_staff_emails_migrated')) {
+            return;
+        }
+
+        $legacy  = trim((string) get_option('hrb_staff_email', ''));
+        $current = trim((string) get_option('hrb_staff_emails', ''));
+
+        if ('' !== $legacy && '' === $current) {
+            update_option('hrb_staff_emails', hrb_sanitize_email_list($legacy));
+        }
+
+        update_option('hrb_staff_emails_migrated', 1);
+
+        self::getInstance()->clear_cache();
+    }
+
+    /**
      * Clear settings cache
      *
      * @since 1.0.0
@@ -1256,4 +1390,107 @@ class HRB_Settings {
     public function clear_cache(): void {
         $this->settings_cache = [];
     }
+}
+
+/**
+ * Split a stored email list into its individual addresses
+ *
+ * Accepts commas, semicolons and newlines as separators so a pasted list
+ * from any source works.
+ *
+ * @since 1.6.0
+ * @param mixed $value Raw setting value
+ * @return array Trimmed, non-empty parts
+ */
+function hrb_parse_email_list($value): array {
+    $parts = is_array($value)
+        ? $value
+        : preg_split('/[\r\n,;]+/', (string) $value);
+
+    $parts = array_map('trim', (array) $parts);
+
+    return array_values(array_filter($parts, static function ($part) {
+        return '' !== $part;
+    }));
+}
+
+/**
+ * Sanitize callback for email-list settings
+ *
+ * Drops anything that is not a valid address and de-duplicates the rest
+ * case-insensitively, keeping the casing the user typed first.
+ *
+ * Must stay a plain global function: HRB_Settings::sanitize_setting() looks
+ * its callback up with function_exists().
+ *
+ * @since 1.6.0
+ * @param mixed $value Raw setting value
+ * @return string Comma separated list of valid addresses
+ */
+function hrb_sanitize_email_list($value): string {
+    $emails = [];
+
+    foreach (hrb_parse_email_list($value) as $candidate) {
+        $email = sanitize_email($candidate);
+        $key   = strtolower($email);
+
+        if (!empty($email) && is_email($email) && !isset($emails[$key])) {
+            $emails[$key] = $email;
+        }
+    }
+
+    return implode(', ', array_values($emails));
+}
+
+/**
+ * Sanitize callback for time-of-day settings
+ *
+ * Returns HH:MM, or an empty string when the value is not a real time — the
+ * validator turns that into a per-field error rather than silently storing
+ * something the scheduler cannot use.
+ *
+ * Must stay a plain global function: HRB_Settings::sanitize_setting() looks
+ * its callback up with function_exists().
+ *
+ * @since 1.6.0
+ * @param mixed $value Raw setting value
+ * @return string
+ */
+function hrb_sanitize_time_of_day($value) {
+    $value = trim((string) $value);
+
+    if (!preg_match('/^(\d{1,2}):(\d{1,2})(?::\d{1,2})?$/', $value, $matches)) {
+        return '';
+    }
+
+    $hours   = (int) $matches[1];
+    $minutes = (int) $matches[2];
+
+    if ($hours > 23 || $minutes > 59) {
+        return '';
+    }
+
+    return sprintf('%02d:%02d', $hours, $minutes);
+}
+
+/**
+ * Find the entries of an email list that are not valid addresses
+ *
+ * Used to tell the user exactly which address was rejected instead of
+ * silently dropping it on save.
+ *
+ * @since 1.6.0
+ * @param mixed $value Raw setting value
+ * @return array Offending entries
+ */
+function hrb_invalid_emails_in_list($value): array {
+    $invalid = [];
+
+    foreach (hrb_parse_email_list($value) as $candidate) {
+        if (!is_email($candidate)) {
+            $invalid[] = $candidate;
+        }
+    }
+
+    return $invalid;
 }

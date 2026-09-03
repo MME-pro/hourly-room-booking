@@ -484,12 +484,67 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
 
         case 'delete_booking':
             if ($post_booking_id) {
+                // delete_booking() returns true or a WP_Error, and a WP_Error
+                // object is truthy — it has to be tested with is_wp_error()
+                // or a failed delete reports success.
                 $result = $booking_manager->delete_booking($post_booking_id);
-                if ($result) {
+                if ($result === true) {
                     echo '<div class="notice notice-success"><p>' . __('Booking deleted successfully.', 'hourly-room-booking') . '</p></div>';
                 } else {
                     echo '<div class="notice notice-error"><p>' . __('Failed to delete booking.', 'hourly-room-booking') . '</p></div>';
                 }
+            }
+            break;
+
+        case 'bulk_delete_bookings':
+            if (!current_user_can('hrb_manage_bookings')) {
+                echo '<div class="notice notice-error"><p>' . __('You are not allowed to delete bookings.', 'hourly-room-booking') . '</p></div>';
+                break;
+            }
+
+            // Sent as a comma separated list built by the list-table checkboxes.
+            $bulk_ids = HRB_Booking_Manager::parse_booking_id_list($_POST['booking_ids'] ?? '');
+
+            if (empty($bulk_ids)) {
+                echo '<div class="notice notice-warning"><p>' . __('No bookings were selected.', 'hourly-room-booking') . '</p></div>';
+                break;
+            }
+
+            $bulk_deleted = 0;
+            $bulk_failed  = [];
+
+            foreach ($bulk_ids as $bulk_id) {
+                $bulk_result = $booking_manager->delete_booking($bulk_id);
+
+                if ($bulk_result === true) {
+                    $bulk_deleted++;
+                } else {
+                    // Each delete runs in its own transaction, so one failure
+                    // does not roll back the bookings already removed. Report
+                    // exactly which ones were left behind.
+                    $bulk_failed[] = $bulk_id;
+                }
+            }
+
+            if ($bulk_deleted > 0) {
+                echo '<div class="notice notice-success"><p>' . sprintf(
+                    /* translators: %d: number of bookings deleted */
+                    _n('%d booking deleted.', '%d bookings deleted.', $bulk_deleted, 'hourly-room-booking'),
+                    $bulk_deleted
+                ) . '</p></div>';
+            }
+
+            if (!empty($bulk_failed)) {
+                echo '<div class="notice notice-error"><p>' . sprintf(
+                    /* translators: %s: comma separated list of booking IDs */
+                    _n(
+                        'Could not delete booking #%s.',
+                        'Could not delete these bookings: #%s.',
+                        count($bulk_failed),
+                        'hourly-room-booking'
+                    ),
+                    esc_html(implode(', #', $bulk_failed))
+                ) . '</p></div>';
             }
             break;
 
@@ -593,13 +648,80 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                 $booking_has_override = ((int) ($booking->price_override ?? 0) === 1);
                 $update_data['price_override'] = ($override_active || $booking_has_override) ? 1 : 0;
 
+                // Is this edit nothing but an internal room move?
+                //
+                // Moving a booking from Room 2 to Room 3 is an internal matter,
+                // so the customer gets no "booking modified" mail. Any other
+                // edit — on its own or alongside the room change — still
+                // notifies as before. The comparison is against what the form
+                // submitted, not against the recalculated prices: a room move
+                // can shift the price by itself and that must not count as a
+                // separate edit.
+                //
+                // $booking is the snapshot loaded before this request started
+                // writing, so it still holds the pre-edit values even though
+                // the customer record above has already been updated.
+                $current_extra_ids = [];
+                foreach (HRB_Extras::getInstance()->get_booking_extras($post_booking_id) as $current_extra) {
+                    $current_extra_ids[] = (int) $current_extra->id;
+                }
+
+                $compare_submitted = [
+                    'room_id'          => $update_data['room_id'],
+                    'status'           => $update_data['status'],
+                    'payment_status'   => $update_data['payment_status'],
+                    'booking_date'     => $update_data['booking_date'],
+                    'start_time'       => $update_data['start_time'],
+                    'end_time'         => $update_data['end_time'],
+                    'total_hours'      => $update_data['total_hours'],
+                    'extra_people'     => $update_data['extra_people'],
+                    'payment_method'   => $update_data['payment_method'],
+                    'special_requests' => $update_data['special_requests'],
+                    'admin_notes'      => $update_data['admin_notes'],
+                    'extras'           => $update_data['extras'],
+                    'custom_price'     => $override_active ? $custom_price_val : ($booking->total_amount ?? null),
+                ];
+
+                $compare_current = [
+                    'room_id'          => $booking->room_id,
+                    'status'           => $booking->status,
+                    'payment_status'   => $booking->payment_status,
+                    'booking_date'     => $booking->booking_date,
+                    'start_time'       => $booking->start_time,
+                    'end_time'         => $booking->end_time,
+                    'total_hours'      => $booking->total_hours,
+                    'extra_people'     => $booking->extra_people,
+                    'payment_method'   => $booking->payment_method,
+                    'special_requests' => $booking->special_requests,
+                    'admin_notes'      => $booking->admin_notes,
+                    'extras'           => $current_extra_ids,
+                    'custom_price'     => $booking->total_amount ?? null,
+                ];
+
+                // Customer-facing details are part of the comparison too, so
+                // renaming a customer still sends the usual notification.
+                if ($booking->is_anonymous) {
+                    $compare_submitted['first_name'] = $update_data['first_name'] ?? '';
+                    $compare_submitted['last_name']  = $update_data['last_name'] ?? '';
+                    $compare_current['first_name']   = $booking->first_name ?? '';
+                    $compare_current['last_name']    = $booking->last_name ?? '';
+                } elseif (!empty($customer_data['email'])) {
+                    foreach (['first_name', 'last_name', 'email', 'phone', 'company'] as $customer_field) {
+                        $compare_submitted[$customer_field] = $customer_data[$customer_field];
+                        $compare_current[$customer_field]   = $booking->$customer_field ?? '';
+                    }
+                }
+
+                $room_only_change = HRB_Booking_Manager::is_room_only_change($compare_submitted, $compare_current);
+                $notify_customer  = !$room_only_change;
+
                 // Remove extras from update_data since it's handled separately
                 $extras_data = $update_data['extras'];
                 unset($update_data['extras']);
 
                 // Update booking with new data
-                $result = $booking_manager->update_booking($post_booking_id, $update_data);
-                
+                $result = $booking_manager->update_booking($post_booking_id, $update_data, $notify_customer);
+
                 if (is_wp_error($result)) {
                     echo '<div class="notice notice-error"><p>' . $result->get_error_message() . '</p></div>';
                     break;
@@ -716,8 +838,9 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                         $price_update_data['total_amount'] = $pricing['total_amount'];
                     }
 
-                    // Pass true for send_notification so booking_modified email is sent when booking is updated
-                    $booking_manager->update_booking($post_booking_id, $price_update_data, true);
+                    // Sends the booking_modified email, unless this edit was
+                    // nothing but an internal room move.
+                    $booking_manager->update_booking($post_booking_id, $price_update_data, $notify_customer);
                     
                     // If payment is already completed and booking total increased, create or update pending payment record
                     // Check if current booking total is greater than what was already paid
@@ -731,31 +854,15 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                         
                         // NOTE: Email is NOT sent automatically - admin must click "Send Payment Link" button
                         
-                        // NOW update booking total_amount and paypal_fee from payment records (source of truth)
-                        // This ensures accuracy after pending payment is created/updated
-                        $completed_payments_total = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}hrb_payments 
-                            WHERE booking_id = %d AND status IN ('completed', 'paid')",
-                            $post_booking_id
-                        ));
-                        $pending_payments_total = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COALESCE(SUM(amount), 0) FROM {$wpdb->prefix}hrb_payments 
-                            WHERE booking_id = %d AND status = 'pending'",
-                            $post_booking_id
-                        ));
-                        $total_amount_from_payments = $completed_payments_total + $pending_payments_total;
-                        
-                        // PayPal fee is sum of all fees in payment records
-                        $total_fees_from_payments = $wpdb->get_var($wpdb->prepare(
-                            "SELECT COALESCE(SUM(fees), 0) FROM {$wpdb->prefix}hrb_payments 
-                            WHERE booking_id = %d",
-                            $post_booking_id
-                        ));
-                        
+                        // NOW update booking total_amount and paypal_fee from payment records (source of truth).
+                        // The rows cannot just be summed: a stale pending row for an
+                        // already-captured PayPal charge would bill the booking twice.
+                        $booking_totals = HRB_Payment_Manager::getInstance()->calculate_booking_total($post_booking_id);
+
                         // Update booking with accurate totals from payment records
                         $booking_manager->update_booking($post_booking_id, [
-                            'total_amount' => $total_amount_from_payments,
-                            'paypal_fee' => $total_fees_from_payments
+                            'total_amount' => $booking_totals['total'],
+                            'paypal_fee' => $booking_totals['fees']
                         ], false);
                     }
                 }
@@ -3126,7 +3233,29 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             color: white;
             border-style: solid;
         }
-        
+
+        /* Already started, still bookable by an admin. Muted on purpose so it
+           is never mistaken for a normal free slot. */
+        .hrb-time-slot.past {
+            border-color: #94a3b8;
+            background: #f1f5f9;
+            border-style: dashed;
+            color: #475569;
+        }
+
+        .hrb-time-slot.past:hover {
+            border-color: #64748b;
+            background: #e2e8f0;
+            border-style: solid;
+        }
+
+        .hrb-time-slot.past.selected {
+            border-color: #475569;
+            background: #475569;
+            color: white;
+            border-style: solid;
+        }
+
         .hrb-time-slot-time {
             font-weight: bold;
             font-size: 14px;
@@ -3462,9 +3591,35 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         </small>
                     </div>
                 <?php endif; ?>
+
+                <?php if (current_user_can('hrb_manage_bookings')): ?>
+                    <?php // Kept outside the table: the rows already contain their
+                          // own forms and nesting forms is invalid HTML. The
+                          // checkboxes feed this one through JavaScript. ?>
+                    <form method="POST" id="hrb-bulk-delete-form" class="hrb-bulk-actions">
+                        <?php wp_nonce_field('hrb_admin_action', 'hrb_nonce'); ?>
+                        <input type="hidden" name="action" value="bulk_delete_bookings">
+                        <input type="hidden" name="booking_ids" id="hrb-bulk-ids" value="">
+
+                        <button type="button" id="hrb-bulk-delete-btn" class="button hrb-bulk-delete-btn" disabled>
+                            <span class="dashicons dashicons-trash"></span>
+                            <?php _e('Delete selected', 'hourly-room-booking'); ?>
+                            <span class="hrb-bulk-count" id="hrb-bulk-count">0</span>
+                        </button>
+
+                        <span class="hrb-bulk-hint"><?php _e('Select bookings with the checkboxes to delete several at once.', 'hourly-room-booking'); ?></span>
+                    </form>
+                <?php endif; ?>
+
                 <table class="wp-list-table widefat striped">
                     <thead>
                         <tr>
+                            <?php if (current_user_can('hrb_manage_bookings')): ?>
+                                <td class="manage-column column-cb check-column">
+                                    <label class="screen-reader-text" for="hrb-select-all"><?php _e('Select all bookings', 'hourly-room-booking'); ?></label>
+                                    <input type="checkbox" id="hrb-select-all">
+                                </td>
+                            <?php endif; ?>
                             <th scope="col" class="column-booking-id">
                                 <?php _e('Booking ID', 'hourly-room-booking'); ?>
                             </th>
@@ -3497,6 +3652,20 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     <tbody>
                         <?php foreach ($bookings as $booking): ?>
                             <tr>
+                                <?php if (current_user_can('hrb_manage_bookings')): ?>
+                                    <th scope="row" class="check-column" data-label="<?php esc_attr_e('Select', 'hourly-room-booking'); ?>">
+                                        <label class="screen-reader-text" for="hrb-cb-<?php echo esc_attr($booking['id']); ?>">
+                                            <?php printf(__('Select booking %s', 'hourly-room-booking'), esc_html($booking['booking_reference'])); ?>
+                                        </label>
+                                        <input
+                                            type="checkbox"
+                                            class="hrb-bulk-cb"
+                                            id="hrb-cb-<?php echo esc_attr($booking['id']); ?>"
+                                            value="<?php echo esc_attr($booking['id']); ?>"
+                                            data-booking-reference="<?php echo esc_attr($booking['booking_reference']); ?>"
+                                        >
+                                    </th>
+                                <?php endif; ?>
                                 <td class="column-booking-id" data-label="<?php esc_attr_e('Booking', 'hourly-room-booking'); ?>">
                                     <strong><a href="<?php echo admin_url('admin.php?page=hrb-bookings&action=view&id=' . $booking['id']); ?>">
                                             #<?php echo esc_html($booking['booking_reference']); ?>
@@ -5072,7 +5241,29 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         color: white;
         border-style: solid;
     }
-    
+
+    /* Already started, still bookable by an admin. Muted on purpose so it
+       is never mistaken for a normal free slot. */
+    .hrb-time-slot.past {
+        border-color: #94a3b8;
+        background: #f1f5f9;
+        border-style: dashed;
+        color: #475569;
+    }
+
+    .hrb-time-slot.past:hover {
+        border-color: #64748b;
+        background: #e2e8f0;
+        border-style: solid;
+    }
+
+    .hrb-time-slot.past.selected {
+        border-color: #475569;
+        background: #475569;
+        color: white;
+        border-style: solid;
+    }
+
     .hrb-time-slot-time {
         font-weight: bold;
         font-size: 14px;
@@ -5139,6 +5330,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     var isAvailable = slot.available;
                     var isLocked = slot.is_locked || false;
                     var lockType = slot.lock_type || null;
+                    var isPast = slot.is_past || false;
                     var statusClass = isAvailable ? 'available' : 'unavailable';
                     var statusText = isAvailable ? '<?php _e('Available', 'hourly-room-booking'); ?>' : '<?php _e('Unavailable', 'hourly-room-booking'); ?>';
 
@@ -5167,13 +5359,20 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             statusClass = 'locked unavailable';
                             statusText = lockLabel;
                         }
+                    } else if (isAvailable && isPast) {
+                        // Bookable, but the slot has already started. Admins do
+                        // this deliberately (walk-ins, catching up on a booking
+                        // that already happened) so it stays clickable — just
+                        // clearly marked so it is never picked by accident.
+                        statusClass = 'available past';
+                        statusText = '<?php _e('Past — bookable', 'hourly-room-booking'); ?>';
                     } else if (isAvailable) {
                         statusClass = 'available';
                     } else {
                         statusClass = 'unavailable';
                     }
 
-                    html += '<div class="hrb-time-slot ' + statusClass + '" data-start-time="' + slot.start_time + '" data-end-time="' + slot.end_time + '" data-available="' + (isAvailable ? 'true' : 'false') + '" data-locked="' + (isLocked ? 'true' : 'false') + '">';
+                    html += '<div class="hrb-time-slot ' + statusClass + '" data-start-time="' + slot.start_time + '" data-end-time="' + slot.end_time + '" data-available="' + (isAvailable ? 'true' : 'false') + '" data-locked="' + (isLocked ? 'true' : 'false') + '" data-past="' + (isPast ? 'true' : 'false') + '">';
                     html += '<div class="hrb-time-slot-time">' + slot.label + '</div>';
                     html += '<div class="hrb-time-slot-status">' + statusText + '</div>';
                     html += '</div>';
@@ -6144,6 +6343,96 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             var formattedPrice = parseFloat(price).toFixed(2);
             return currencySymbol + formattedPrice;
         }
+    });
+
+    // Bulk selection on the bookings list.
+    //
+    // The checkboxes sit inside the table, which already contains per-row
+    // forms, so they cannot live in the bulk form itself. Their values are
+    // collected into a hidden field on the bulk form right before submit.
+    jQuery(document).ready(function($) {
+        var $form = $('#hrb-bulk-delete-form');
+        if (!$form.length) {
+            return;
+        }
+
+        var $selectAll = $('#hrb-select-all');
+        var $button = $('#hrb-bulk-delete-btn');
+        var $count = $('#hrb-bulk-count');
+        var $ids = $('#hrb-bulk-ids');
+
+        function selected() {
+            return $('.hrb-bulk-cb:checked');
+        }
+
+        function refresh() {
+            var $checked = selected();
+            var total = $('.hrb-bulk-cb').length;
+
+            $count.text($checked.length);
+            $button.prop('disabled', $checked.length === 0);
+
+            // Header checkbox reflects none / some / all.
+            $selectAll.prop('checked', total > 0 && $checked.length === total);
+            $selectAll.prop('indeterminate', $checked.length > 0 && $checked.length < total);
+        }
+
+        $selectAll.on('change', function() {
+            $('.hrb-bulk-cb').prop('checked', $(this).is(':checked'));
+            refresh();
+        });
+
+        $(document).on('change', '.hrb-bulk-cb', refresh);
+
+        $button.on('click', function(e) {
+            e.preventDefault();
+
+            var $checked = selected();
+            if (!$checked.length) {
+                return;
+            }
+
+            var ids = $checked.map(function() { return $(this).val(); }).get();
+            var references = $checked.map(function() {
+                return $(this).data('booking-reference');
+            }).get();
+
+            // Keep the confirmation readable when a lot is selected.
+            var shown = references.slice(0, 10).join(', ');
+            if (references.length > 10) {
+                shown += ' … (+' + (references.length - 10) + ')';
+            }
+
+            window.hrbShowAlertDialog(
+                <?php echo json_encode(__('Are you sure you want to delete the selected bookings?', 'hourly-room-booking')); ?>,
+                {
+                    warningMessage: <?php echo json_encode(__('This action cannot be undone. Payments and invoices belonging to these bookings are removed as well.', 'hourly-room-booking')); ?>,
+                    title: <?php echo json_encode(__('Delete Bookings', 'hourly-room-booking')); ?>,
+                    details: [
+                        {
+                            label: <?php echo json_encode(__('Selected:', 'hourly-room-booking')); ?>,
+                            value: ids.length,
+                            class: 'original'
+                        },
+                        {
+                            label: <?php echo json_encode(__('Booking References:', 'hourly-room-booking')); ?>,
+                            value: shown,
+                            class: 'original'
+                        }
+                    ],
+                    confirmText: <?php echo json_encode(__('Delete', 'hourly-room-booking')); ?>,
+                    cancelText: <?php echo json_encode(__('Cancel', 'hourly-room-booking')); ?>,
+                    type: 'danger'
+                },
+                function() {
+                    $ids.val(ids.join(','));
+                    $button.prop('disabled', true);
+                    $form.get(0).submit();
+                }
+            );
+        });
+
+        refresh();
     });
 
     // Function to confirm booking deletion using custom dialog (global scope)

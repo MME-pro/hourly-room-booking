@@ -59,6 +59,16 @@ $month_end = date('Y-m-t');
                     <div class="hrb-stat-label">
                         <?php _e('This Month Revenue', 'hourly-room-booking'); ?>
                     </div>
+                    <div class="hrb-stat-sublabel">
+                        <?php
+                        $hrb_month_transactions = intval($dashboard_stats['month_transactions'] ?? 0);
+                        printf(
+                            /* translators: %d: number of collected payments this month */
+                            esc_html(_n('from %d payment', 'from %d payments', $hrb_month_transactions, 'hourly-room-booking')),
+                            $hrb_month_transactions
+                        );
+                        ?>
+                    </div>
                 </div>
             </div>
 
@@ -519,6 +529,12 @@ document.addEventListener('DOMContentLoaded', function() {
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.6px;
+}
+
+.hrb-stat-sublabel {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #94a3b8;
 }
 
 /* Dashboard Content */

@@ -1184,6 +1184,98 @@ class HRB_Booking_Manager {
     }
 
     /**
+     * Which of the submitted fields actually differ from the stored booking?
+     *
+     * Compares like the notification check in update_booking() does: numbers
+     * numerically, lists order-insensitively, everything else as trimmed
+     * strings so "" and NULL count as the same value.
+     *
+     * @since 1.6.0
+     * @param array $submitted Field => value as posted by the edit form
+     * @param array $current   Field => value as currently stored
+     * @return array Sorted list of the field names that changed
+     */
+    public static function diff_booking_fields(array $submitted, array $current) {
+        $changed = [];
+
+        foreach ($submitted as $field => $new_value) {
+            $old_value = array_key_exists($field, $current) ? $current[$field] : null;
+
+            if (is_array($new_value) || is_array($old_value)) {
+                $old_list = array_map('strval', (array) $old_value);
+                $new_list = array_map('strval', (array) $new_value);
+                sort($old_list);
+                sort($new_list);
+
+                if ($old_list !== $new_list) {
+                    $changed[] = $field;
+                }
+                continue;
+            }
+
+            if (is_numeric($old_value) && is_numeric($new_value)) {
+                if (floatval($old_value) !== floatval($new_value)) {
+                    $changed[] = $field;
+                }
+                continue;
+            }
+
+            if (trim((string) $old_value) !== trim((string) $new_value)) {
+                $changed[] = $field;
+            }
+        }
+
+        sort($changed);
+
+        return $changed;
+    }
+
+    /**
+     * Is this edit nothing but an internal room move?
+     *
+     * An admin moving a booking from Room 2 to Room 3 is invisible to the
+     * customer, so no "booking modified" mail goes out. The moment anything
+     * else is edited too, the customer is notified as usual.
+     *
+     * Price fields are deliberately not part of the comparison: a room move
+     * can change the price by itself, and that is a consequence of the move
+     * rather than a separate edit.
+     *
+     * @since 1.6.0
+     * @param array $submitted Field => value as posted by the edit form
+     * @param array $current   Field => value as currently stored
+     * @return bool
+     */
+    public static function is_room_only_change(array $submitted, array $current) {
+        return self::diff_booking_fields($submitted, $current) === ['room_id'];
+    }
+
+    /**
+     * Parse a submitted list of booking IDs
+     *
+     * The bookings list table posts its checked rows as one comma separated
+     * field. Anything that is not a positive integer is dropped, and the
+     * result is de-duplicated so a booking is never deleted twice.
+     *
+     * @since 1.6.0
+     * @param string|array $raw Raw submitted value
+     * @return array List of positive integer booking IDs
+     */
+    public static function parse_booking_id_list($raw) {
+        $parts = is_array($raw) ? $raw : explode(',', (string) $raw);
+
+        $ids = array_map(static function ($part) {
+            return intval(trim((string) $part));
+        }, $parts);
+
+        $ids = array_filter($ids, static function ($id) {
+            return $id > 0;
+        });
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Delete booking
      */
     public function delete_booking($booking_id) {
