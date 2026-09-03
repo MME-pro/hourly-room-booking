@@ -1,0 +1,106 @@
+name: Release
+
+# Pushing a "v*" tag builds the distributable plugin zip and publishes it as a
+# GitHub release. HRB_Updater on every installed site reads that release and
+# offers the update through the normal WordPress plugins screen.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build a release from (e.g. v1.4.1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Verify tag matches the plugin version
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          HEADER=$(grep -m1 -oP '^\s*\*\s*Version:\s*\K[0-9][^\s]*' hourly-room-booking.php)
+          CONST=$(grep -m1 -oP "define\('HRB_VERSION',\s*'\K[^']+" hourly-room-booking.php)
+
+          echo "tag=$VERSION header=$HEADER constant=$CONST"
+
+          if [ "$VERSION" != "$HEADER" ] || [ "$VERSION" != "$CONST" ]; then
+            echo "::error::Tag $VERSION does not match the plugin header ($HEADER) / HRB_VERSION ($CONST). Bump the version before tagging."
+            exit 1
+          fi
+
+      - name: Build plugin zip
+        run: |
+          mkdir -p build/hourly-room-booking
+          rsync -a ./ build/hourly-room-booking/ \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.gitignore' \
+            --exclude '.gitattributes' \
+            --exclude '.DS_Store' \
+            --exclude 'build' \
+            --exclude 'tests' \
+            --exclude 'screenshots' \
+            --exclude 'node_modules' \
+            --exclude 'uploads'
+          mkdir -p build/hourly-room-booking/uploads
+          cd build && zip -qr ../hourly-room-booking.zip hourly-room-booking
+          cd .. && unzip -l hourly-room-booking.zip | tail -1
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          VERSION="${{ steps.tag.outputs.version }}"
+          awk -v v="$VERSION" '
+            /^## \[/ { if (found) exit; if (index($0, "## [" v "]") == 1) { found = 1; next } }
+            found
+          ' CHANGELOG.md > notes.md
+
+          if [ ! -s notes.md ]; then
+            echo "No CHANGELOG section for $VERSION; falling back to generated notes."
+            echo "generated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "generated=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${{ steps.tag.outputs.version }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; replacing its asset."
+            gh release upload "$TAG" hourly-room-booking.zip --clobber
+            exit 0
+          fi
+
+          if [ "${{ steps.notes.outputs.generated }}" = "true" ]; then
+            gh release create "$TAG" hourly-room-booking.zip \
+              --title "v$VERSION" \
+              --generate-notes
+          else
+            gh release create "$TAG" hourly-room-booking.zip \
+              --title "v$VERSION" \
+              --notes-file notes.md
+          fi

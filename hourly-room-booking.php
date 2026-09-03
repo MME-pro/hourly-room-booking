@@ -3,7 +3,7 @@
  * Plugin Name: Hourly Room Booking System
  * Plugin URI: https://mme-pro.de
  * Description: Professional room booking system with hourly slots, payment integration, and comprehensive management features.
- * Version: 1.4.0
+ * Version: 1.5.0
  * Author: MME-Pro Dev Team
  * Author URI: https://mme-pro.de
  * Requires at least: 5.0
@@ -48,7 +48,7 @@ if (defined('HRB_VERSION')) {
  * These constants are used throughout the plugin for consistency
  * and to avoid magic strings in the codebase.
  */
-define('HRB_VERSION', '1.4.0');
+define('HRB_VERSION', '1.5.0');
 define('HRB_MIN_PHP_VERSION', '7.4');
 define('HRB_MIN_WP_VERSION', '5.0');
 define('HRB_PLUGIN_FILE', __FILE__);
@@ -117,6 +117,7 @@ final class HourlyRoomBooking {
         'HRB_Frontend'            => 'class-frontend.php',
         'HRB_Shortcodes'          => 'class-shortcodes.php',
         'HRB_Ajax_Handler'        => 'class-ajax-handler.php',
+        'HRB_Updater'             => 'class-updater.php',
     ];
     
     /**
@@ -371,6 +372,7 @@ final class HourlyRoomBooking {
             $this->components['frontend']     = HRB_Frontend::getInstance();
             $this->components['shortcodes']   = HRB_Shortcodes::getInstance();
             $this->components['ajax_handler'] = HRB_Ajax_Handler::getInstance();
+            $this->components['updater']      = HRB_Updater::getInstance();
             
             // Components initialized successfully
             do_action('hrb_components_loaded', $this->components);

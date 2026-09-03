@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-03
+
+### Added
+- **Automatic updates from GitHub:** the plugin now registers itself with the native WordPress update system and offers new versions published as GitHub releases — the normal "Update now" button on the Plugins screen, no manual zip upload. Release lookups are cached for 6 hours (15 minutes after a failure, so a GitHub outage never stalls admin page loads), the extracted folder is renamed to the installed directory so an update can no longer deactivate the plugin, and a "Check for updates" link on the plugin row forces a fresh check. Private repositories are supported by defining `HRB_GITHUB_TOKEN` in `wp-config.php`.
+- **Release pipeline:** pushing a `v*` tag builds the distributable zip, takes the release notes from this changelog, and publishes the GitHub release. The build fails if the tag, the plugin header and `HRB_VERSION` disagree.
+- **`CLAUDE.md`** documenting the release workflow and the plugin's bootstrap conventions.
+
 ## [1.4.0] - 2026-06-18
 
 ### Added
