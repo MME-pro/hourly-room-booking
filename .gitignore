@@ -1,0 +1,10 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Runtime uploads (generated PDFs, invoices, etc.)
+uploads/*
+!uploads/.gitkeep
+
+# Node
+node_modules/
