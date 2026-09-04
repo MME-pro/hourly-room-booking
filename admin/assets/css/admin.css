@@ -1703,6 +1703,35 @@ span.stockInfo
     .fc .fc-list-event-title .fc-event-content,
     .fc .fc-list-event-title .fc-event-row { white-space: normal; display: block; }
     .fc .fc-list-event-title .fc-event-row span { white-space: normal; }
+    /* Day view = the other readable mobile view: one full-width column, so the
+       events carry the same detailed card as the list rows (customer, room,
+       reference, time + price, extras, status) instead of a compact pill. */
+    .fc-timeGridDay-view .fc-timegrid-event,
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-main { overflow: hidden; }
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-content { padding: 6px 8px; }
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        white-space: normal;
+        font-size: 13px;
+        line-height: 1.35;
+    }
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-row span { white-space: normal; }
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-time-price {
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .fc-timeGridDay-view .fc-timegrid-event .fc-event-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 4px;
+    }
+    /* The time axis eats width on a phone; give the card as much as possible. */
+    .fc-timeGridDay-view .fc-timegrid-slot-label { font-size: 11px; }
+    .fc-timeGridDay-view .fc-timegrid-axis { width: 44px; }
+
     /* Calendar controls / legend stack nicely */
     .hrb-calendar-controls { flex-direction: column; align-items: stretch; gap: 10px; }
     .hrb-calendar-views { display: flex; flex-wrap: wrap; gap: 6px; }

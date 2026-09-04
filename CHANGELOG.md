@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-09-04
+
+### Fixed
+- **The plugin's own admin pages were padded away from the admin menu.** `HRB_Admin::add_admin_body_class()` puts `hrb-admin-page` on `<body>`, and every view also styles `.hrb-admin-page` as its page wrapper — so each view's `padding: 24px` landed on `<body>` as well and pushed the whole admin, menu included, in from the viewport. Measured in a browser: it moved the admin menu's right edge from 160px to 184px. The box is now reset on the body; the wrapper keeps its own padding, so the page background runs flush to the menu while the content inside stays inset.
+- **Edited stylesheets and scripts were served from cache.** `admin.css` is enqueued from two places — the bootstrap and `HRB_Admin` — and the bootstrap claims the handle first, so its `HRB_VERSION` was the version the browser saw. Any CSS fix shipped without a version bump kept serving the cached file. Both enqueues now version assets by file modification time.
+- **A published release could take hours to appear**, even after deliberately pressing "Check again" on the Updates screen: the six-hour release cache outlived it. The cache is now dropped whenever WordPress drops its own plugin-update data, and a force-check goes straight to GitHub instead of answering from cache.
+- Removed the negative wrapper margins the views applied at phone widths; they only worked while `<body>` carried the 24px padding and would otherwise pull content off the left edge.
+
+### Changed
+- **Day view on phones now shows the full booking card** — customer, room, booking reference, time and price, extras and status — the same detail the list view gives, instead of a compact pill. Month and week views keep the pill, where a grid cell has no room for more. Short bookings are given enough height for the card via `eventMinHeight`, so a one-hour booking is not clipped.
+
 ## [1.7.0] - 2026-09-04
 
 ### Added

@@ -97,6 +97,12 @@ class HRB_Updater {
         add_action('upgrader_process_complete', [$this, 'purge_cache'], 10, 2);
         add_filter('plugin_row_meta', [$this, 'add_check_link'], 10, 2);
         add_action('admin_init', [$this, 'handle_force_check']);
+
+        // Whenever WordPress throws away its own plugin-update data, throw ours
+        // away too. Without this the 6 hour release cache outlives a deliberate
+        // "Check again" on the Updates screen, so a release published minutes
+        // ago would not show up for hours.
+        add_action('delete_site_transient_update_plugins', [$this, 'purge_release_cache']);
     }
 
     /**
@@ -301,6 +307,15 @@ class HRB_Updater {
      * @param WP_Upgrader $upgrader Upgrader instance
      * @param array       $options  Update options
      */
+    /**
+     * Drop the cached release lookup
+     *
+     * @since 1.7.1
+     */
+    public function purge_release_cache() {
+        delete_transient(self::CACHE_KEY);
+    }
+
     public function purge_cache($upgrader, $options = []) {
         if (empty($options['action']) || 'update' !== $options['action']) {
             return;
@@ -370,8 +385,12 @@ class HRB_Updater {
      * @return array Normalised release data; "version" is empty on failure
      */
     private function get_remote_release() {
+        // "Check again" on the Updates screen sets force-check; honour it
+        // rather than answering from a cache the user just asked us to skip.
+        $forced = !empty($_GET['force-check']) || !empty($_GET['hrb-force-check']);
+
         $cached = get_transient(self::CACHE_KEY);
-        if (is_array($cached)) {
+        if (!$forced && is_array($cached)) {
             return $cached;
         }
 

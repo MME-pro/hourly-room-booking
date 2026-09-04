@@ -1271,6 +1271,11 @@ function initializeCalendar() {
         },
         height: 'auto',
         dayMaxEvents: window.innerWidth <= 782 ? 3 : false,
+        // Day view on phones renders the full detail card, which needs more
+        // room than a short booking's duration gives it. FullCalendar sizes a
+        // time-grid event to max(duration, eventMinHeight), so this only grows
+        // the short ones and leaves long bookings alone.
+        eventMinHeight: window.innerWidth <= 782 ? 150 : 15,
         events: function(info, successCallback, failureCallback) {
             fetchCalendarEvents(info.start, info.end, successCallback, failureCallback);
         },
@@ -1315,9 +1320,11 @@ function initializeCalendar() {
                 };
             }
 
-            // On phones, grid views (month/week/day) show a compact pill; tap opens details.
+            // On phones, month and week show a compact pill — there is no room
+            // for more in a grid cell. Day view has a single full-width column,
+            // so it gets the same detailed card as the list view.
             var _vt = arg.view.type;
-            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0) {
+            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0 && _vt !== 'timeGridDay') {
                 var _cn = (arg.event.extendedProps.customer_name || arg.event.title.replace(/\s*\([^)]+\)$/, '')) || '<?php echo esc_js(__('Booking', 'hourly-room-booking')); ?>';
                 var _ct = (arg.timeText || '').replace(' - ', '-');
                 return { html: '<div class="fc-event-compact">' + (_ct ? '<b>' + _ct + '</b> ' : '') + _cn + '</div>' };
