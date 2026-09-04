@@ -551,22 +551,29 @@ final class HourlyRoomBooking {
         
         $css_file = HRB_ADMIN_DIR . 'assets/css/admin.css';
         $js_file = HRB_ADMIN_DIR . 'assets/js/admin.js';
-        
+
+        // This runs before HRB_Admin's own enqueue and claims the "hrb-admin"
+        // handle, so the version stamped here is the one the browser sees.
+        // It has to be the file-modification stamp too, otherwise an edited
+        // stylesheet keeps being served from cache until HRB_VERSION changes.
+        $css_version = HRB_Admin::asset_version('admin/assets/css/admin.css');
+        $js_version  = HRB_Admin::asset_version('admin/assets/js/admin.js');
+
         if (file_exists($css_file)) {
             wp_enqueue_style(
                 'hrb-admin',
                 HRB_PLUGIN_URL . 'admin/assets/css/admin.css',
                 [],
-                HRB_VERSION
+                $css_version
             );
         }
-        
+
         if (file_exists($js_file)) {
             wp_enqueue_script(
                 'hrb-admin',
                 HRB_PLUGIN_URL . 'admin/assets/js/admin.js',
                 ['jquery'],
-                HRB_VERSION,
+                $js_version,
                 true
             );
             

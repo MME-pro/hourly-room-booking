@@ -246,10 +246,61 @@ class HRB_Admin {
      * admin pages, so the backend can be pinned to a phone home screen and opens
      * full-screen like an app.
      */
-    public function add_admin_body_class($classes) {
-        if (isset($_GET['page']) && strpos((string) $_GET['page'], 'hrb') === 0) {
-            $classes .= ' hrb-admin-page';
+    /**
+     * Cache-busting version for a bundled asset
+     *
+     * Uses the file's modification time rather than HRB_VERSION so an edited
+     * stylesheet or script is picked up straight away. Versioning on
+     * HRB_VERSION alone means a fix shipped without a version bump keeps
+     * serving the browser's cached copy.
+     *
+     * @since 1.7.1
+     * @param string $relative_path Path inside the plugin directory
+     * @return string
+     */
+    public static function asset_version($relative_path) {
+        $file = HRB_PLUGIN_DIR . ltrim($relative_path, '/');
+
+        if (file_exists($file)) {
+            $modified = filemtime($file);
+
+            if ($modified) {
+                return HRB_VERSION . '.' . $modified;
+            }
         }
+
+        return HRB_VERSION;
+    }
+
+    public function add_admin_body_class($classes) {
+        $page = isset($_GET['page']) ? (string) $_GET['page'] : '';
+
+        if (strpos($page, 'hrb') !== 0) {
+            return $classes;
+        }
+
+        $classes .= ' hrb-admin-page';
+
+        // These screens render a full-bleed .hrb-admin-page wrapper (coloured
+        // header, own background) rather than the usual .wrap layout, so they
+        // need to sit flush against the admin menu. The class lets the
+        // stylesheet drop the 20px gutter WordPress puts on #wpcontent, for
+        // these pages only — the .wrap screens keep the standard spacing.
+        $full_bleed = [
+            'hrb-rooms',
+            'hrb-room-availability',
+            'hrb-calendar',
+            'hrb-customers',
+            'hrb-extras',
+            'hrb-extras-availability',
+            'hrb-payments',
+            'hrb-reports',
+        ];
+
+        if (in_array($page, $full_bleed, true)) {
+            $classes .= ' hrb-fullbleed-page';
+        }
+
         return $classes;
     }
 
@@ -310,8 +361,8 @@ class HRB_Admin {
         wp_enqueue_style('fullcalendar', 'https://cdnjs.cloudflare.com/ajax/libs/fullcalendar/5.11.3/main.min.css', array(), '5.11.3');
         
         // Admin scripts and styles
-        wp_enqueue_script('hrb-admin', HRB_PLUGIN_URL . 'admin/assets/js/admin.js', array('jquery', 'chart-js'), HRB_VERSION, true);
-        wp_enqueue_style('hrb-admin', HRB_PLUGIN_URL . 'admin/assets/css/admin.css', array(), HRB_VERSION);
+        wp_enqueue_script('hrb-admin', HRB_PLUGIN_URL . 'admin/assets/js/admin.js', array('jquery', 'chart-js'), self::asset_version('admin/assets/js/admin.js'), true);
+        wp_enqueue_style('hrb-admin', HRB_PLUGIN_URL . 'admin/assets/css/admin.css', array(), self::asset_version('admin/assets/css/admin.css'));
         
         wp_localize_script('hrb-admin', 'hrbAdmin', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),

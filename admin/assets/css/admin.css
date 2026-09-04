@@ -1866,10 +1866,45 @@ body.hrb-cal-fs-open { overflow: hidden; }
 /* ==========================================================================
    HRB — page padding + action-button contrast (all HRB list pages)
    ========================================================================== */
-/* Content wrapper: flush-left on desktop so the red header aligns edge-to-edge */
-body.hrb-admin-page .hrb-admin-page { padding-left: 0 !important; }
+/* The wrapper keeps the padding each view gives it on all four sides, so the
+   content inside stays comfortably inset. The page itself still runs flush to
+   the admin menu — the gutter is removed on #wpcontent below, i.e. outside the
+   page rather than inside it.
+   Margins are forced to zero because the views set negative ones, which only
+   made sense while <body> carried the 24px padding (see the body reset below);
+   with that gone they would pull the content off the left edge. */
+body.hrb-admin-page .hrb-admin-page {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+}
+
+/* Zeroing the wrapper's own padding is not enough. The remaining gap is
+   WordPress core's own gutter — #wpcontent carries padding-left: 20px (10px
+   below 782px) — so it has to be removed on the container itself.
+   Only on the full-bleed screens: body.hrb-fullbleed-page is added by
+   HRB_Admin::add_admin_body_class() for the pages that render the
+   .hrb-admin-page wrapper. The .wrap-based screens (bookings, dashboard,
+   settings, email templates) are ordinary WordPress layouts and keep the
+   standard gutter. */
+body.hrb-fullbleed-page #wpcontent {
+    padding-left: 0 !important;
+}
+
+/* The wrapper class doubles as a body class: HRB_Admin::add_admin_body_class()
+   puts "hrb-admin-page" on <body>, and every view also ships its own
+   ".hrb-admin-page { padding: 24px; ... }" block. That rule therefore lands on
+   <body> too and pads the entire admin — the menu included — 24px in from the
+   viewport, which is the gap that shows up beside the admin menu.
+   The rule above cannot undo it: <body> is not a descendant of itself. Reset
+   the box on the body itself; the wrapper div keeps its own padding. */
+body.hrb-admin-page {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
 @media (max-width: 768px) {
-    body.hrb-admin-page .hrb-admin-page { padding: 16px !important; margin: -10px !important; }
+    /* Tighter padding on phones, but still no negative margin. */
+    body.hrb-admin-page .hrb-admin-page { padding: 16px !important; margin: 0 !important; }
 }
 
 /* Action buttons: solid, visible backgrounds with white icons + darker hover.
