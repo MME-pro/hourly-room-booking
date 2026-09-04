@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-09-04
+
+### Fixed
+- **Booking cards were cut off in the calendar's Day view.** A time grid sizes an event to its duration, so a short booking was given less height than its card needs — measured in a browser: the card needs 102px, a two-hour booking was given 74. The day view's slots are now tall enough that even the plugin's shortest allowed booking (two hours) fits a full card, with room for a wrapped line. The week grid keeps its own slot height, where seven columns at this height would be unusable.
+- **Overlapping bookings were drawn on top of each other** in Day and Week view, so the card underneath was half covered — the reported case was two bookings both starting at 16:30. They now sit strictly side by side in equal columns.
+- **Day view on phones no longer clips the card at all.** The Day button opens the day list rather than the time grid: a list row grows with its content the way a month cell does, so a card with several extras and long names is never cut. Month and week keep their compact pill, where a grid cell has no room for more.
+
 ## [1.7.1] - 2026-09-04
 
 ### Fixed

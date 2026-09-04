@@ -1271,11 +1271,9 @@ function initializeCalendar() {
         },
         height: 'auto',
         dayMaxEvents: window.innerWidth <= 782 ? 3 : false,
-        // Day view on phones renders the full detail card, which needs more
-        // room than a short booking's duration gives it. FullCalendar sizes a
-        // time-grid event to max(duration, eventMinHeight), so this only grows
-        // the short ones and leaves long bookings alone.
-        eventMinHeight: window.innerWidth <= 782 ? 150 : 15,
+        // Overlapping bookings sit strictly side by side instead of the later
+        // one being drawn over the earlier: a half-covered card is unreadable.
+        slotEventOverlap: false,
         events: function(info, successCallback, failureCallback) {
             fetchCalendarEvents(info.start, info.end, successCallback, failureCallback);
         },
@@ -1320,11 +1318,12 @@ function initializeCalendar() {
                 };
             }
 
-            // On phones, month and week show a compact pill — there is no room
-            // for more in a grid cell. Day view has a single full-width column,
-            // so it gets the same detailed card as the list view.
+            // On phones, grid views show a compact pill; tap opens details.
+            // A time grid sizes an event to its duration and clips whatever does
+            // not fit, so the detailed card only works in a list view — which is
+            // what the Day button switches to on a phone (see hrbMobileView).
             var _vt = arg.view.type;
-            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0 && _vt !== 'timeGridDay') {
+            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0) {
                 var _cn = (arg.event.extendedProps.customer_name || arg.event.title.replace(/\s*\([^)]+\)$/, '')) || '<?php echo esc_js(__('Booking', 'hourly-room-booking')); ?>';
                 var _ct = (arg.timeText || '').replace(' - ', '-');
                 return { html: '<div class="fc-event-compact">' + (_ct ? '<b>' + _ct + '</b> ' : '') + _cn + '</div>' };
@@ -1495,12 +1494,24 @@ function filterByRoom(roomId) {
     window.history.pushState({}, '', url);
 }
 
+/**
+ * Map a view to the one that actually works at this width.
+ *
+ * On a phone the Day button opens the day *list* rather than the time grid. A
+ * time grid sizes each event to its duration and clips anything that does not
+ * fit, so a detailed booking card gets cut off. The list stacks full-height
+ * cards that grow with their content — the same way a month cell does.
+ */
+function hrbMobileView(view) {
+    return (window.innerWidth <= 782 && view === 'timeGridDay') ? 'listDay' : view;
+}
+
 // Calendar view buttons
 document.querySelectorAll('.calendar-view-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         document.querySelectorAll('.calendar-view-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
-        calendar.changeView(this.dataset.view);
+        calendar.changeView(hrbMobileView(this.dataset.view));
     });
 });
 
