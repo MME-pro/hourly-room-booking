@@ -234,7 +234,12 @@
     color: #1d2327;
 }
 
-/* Bulk actions bar (bookings list) */
+/* Bulk delete, shown alongside Filter/Clear in the filters bar.
+   The form that carries the request is hidden; only its button is visible. */
+.hrb-bulk-delete-form {
+    display: none;
+}
+
 .hrb-bulk-actions {
     display: flex;
     align-items: center;
@@ -243,24 +248,24 @@
     margin-bottom: 10px;
 }
 
-.hrb-bulk-actions .hrb-bulk-delete-btn {
+.hrb-bulk-delete-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
 }
 
-.hrb-bulk-actions .hrb-bulk-delete-btn:not(:disabled) {
+.hrb-bulk-delete-btn:not(:disabled) {
     color: #b32d2e;
     border-color: #b32d2e;
 }
 
-.hrb-bulk-actions .hrb-bulk-delete-btn:not(:disabled):hover {
+.hrb-bulk-delete-btn:not(:disabled):hover {
     background: #b32d2e;
     border-color: #b32d2e;
     color: #fff;
 }
 
-.hrb-bulk-actions .hrb-bulk-delete-btn .dashicons {
+.hrb-bulk-delete-btn .dashicons {
     width: 16px;
     height: 16px;
     font-size: 16px;

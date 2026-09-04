@@ -15,8 +15,19 @@
  */
 
 define('ABSPATH', __DIR__);
+define('HRB_PLUGIN_DIR', dirname(__DIR__, 2) . '/');
 
 date_default_timezone_set('UTC');
+
+// No database here, so the template lookup finds nothing and the class falls
+// back to the bundled copy — which is exactly what these tests exercise.
+class HRB_Test_WPDB {
+    public $prefix = 'wp_';
+    public function prepare($query) { return $query; }
+    public function get_row($query) { return null; }
+}
+
+$GLOBALS['wpdb'] = new HRB_Test_WPDB();
 
 // --- WordPress stubs -------------------------------------------------------
 
@@ -41,6 +52,9 @@ function number_format_i18n($number, $decimals = 0) { return number_format((floa
 function sanitize_email($email) { return trim((string) $email); }
 function is_email($email) { return (bool) filter_var((string) $email, FILTER_VALIDATE_EMAIL); }
 function hrb_format_amount($amount) { return number_format((float) $amount, 2, ',', '.') . ' €'; }
+function esc_url($url) { return (string) $url; }
+function esc_attr($text) { return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8'); }
+function wp_strip_all_tags($text) { return trim(strip_tags((string) $text)); }
 
 require_once dirname(__DIR__, 2) . '/includes/class-daily-summary.php';
 
@@ -207,76 +221,88 @@ check(
 );
 
 // ---------------------------------------------------------------------------
-// The email body
+// The email body — rendered from the branded daily_summary_admin template
 // ---------------------------------------------------------------------------
+
+echo "\n-- the bundled template --\n";
+
+$bundled = HRB_Daily_Summary::bundled_template();
+
+check('the summary template is bundled', isset($bundled['html_content']), true);
+check_contains('it uses the branded container', $bundled['html_content'], 'class="container"');
+check_contains('it carries the company logo slot', $bundled['html_content'], '{company_logo_html}');
+check_contains('it carries the branded footer', $bundled['html_content'], 'class="footer"');
+check_contains('it uses the branded details table', $bundled['html_content'], 'class="booking-details"');
+check_contains('it highlights the amount row', $bundled['html_content'], 'class="amount-row"');
 
 echo "\n-- render_html --\n";
 
 $summary = HRB_Daily_Summary::getInstance();
 
 $figures = [
-    'date'              => '2026-09-03',
-    'total'             => 7,
-    'by_status'         => ['confirmed' => 5, 'pending' => 1, 'cancelled' => 1],
-    'hours'             => 18.0,
-    'value'             => 1420.50,
+    'date'              => '2026-09-04',
+    'total'             => 4,
+    'by_status'         => ['confirmed' => 2, 'pending' => 1, 'cancelled' => 1],
+    'by_payment_status' => ['paid' => 1, 'pending' => 2, 'cancelled' => 1],
+    'hours'             => 7.0,
+    'value'             => 260.00,
     'rooms'             => [
-        ['name' => 'Room 2', 'bookings' => 4, 'hours' => 11.0, 'value' => 900.00],
-        ['name' => 'Room 3', 'bookings' => 2, 'hours' => 7.0,  'value' => 520.50],
+        ['name' => 'Room 2', 'bookings' => 2, 'hours' => 5.0, 'value' => 200.00],
+        ['name' => 'Room 3', 'bookings' => 1, 'hours' => 2.0, 'value' => 60.00],
     ],
-    'collected'         => 1100.00,
-    'collected_count'   => 3,
-    'outstanding'       => 320.50,
-    'created'           => 4,
-    'created_value'     => 760.00,
-    'cancellation_fees' => 15.00,
+    'collected'         => 120.00,
+    'collected_count'   => 1,
+    'outstanding'       => 80.00,
+    'cancellation_fees' => 0.0,
 ];
 
 $html = $summary->render_html($figures);
 
-check_contains('the date it covers', $html, '03.09.2026');
-check_contains('the booking count', $html, '>7<');
-check_contains('the hours booked', $html, '>18<');
-check_contains('the booking value', $html, '1.420,50 €');
-check_contains('payments received', $html, '1.100,00 €');
-check_contains('the payment count', $html, '(3)');
-check_contains('the outstanding amount', $html, '320,50 €');
-check_contains('new bookings', $html, '760,00 €');
+check_contains('the date it covers', $html, '04.09.2026');
+check_contains('the number of bookings created', $html, '<strong>4</strong>');
+check_contains('the booking value', $html, '260,00 €');
+check_contains('the hours booked', $html, '>7<');
+check_contains('payments received', $html, '120,00 €');
+check_contains('the outstanding amount', $html, '80,00 €');
 check_contains('the first room', $html, 'Room 2');
 check_contains('the second room', $html, 'Room 3');
-check_contains('a per-room value', $html, '900,00 €');
-check_contains('the status breakdown', $html, 'Confirmed');
-check_contains('the cancellation fee line', $html, '15,00 €');
+check_contains('a per-room value', $html, '200,00 €');
+check_contains('the payment-status breakdown', $html, 'Paid');
 check_contains('the company name', $html, 'Bookingsuite');
+check('every placeholder was filled', preg_match('/\{[a-z_]+\}/', $html), 0);
 check('the mail is a complete document', substr($html, 0, 15), '<!DOCTYPE html>');
 
-// A quiet day must still produce a readable mail rather than an empty shell.
+echo "\n-- render_subject --\n";
+
+$subject = $summary->render_subject($figures);
+check_contains('the subject carries the date', $subject, '04.09.2026');
+check_contains('the subject carries the company', $subject, 'Bookingsuite');
+check('the subject has no placeholders left', preg_match('/\{[a-z_]+\}/', $subject), 0);
+
+echo "\n-- a day with nothing created --\n";
+
 $empty_day = [
-    'date'              => '2026-09-03',
+    'date'              => '2026-09-04',
     'total'             => 0,
     'by_status'         => [],
+    'by_payment_status' => [],
     'hours'             => 0.0,
     'value'             => 0.0,
     'rooms'             => [],
     'collected'         => 0.0,
     'collected_count'   => 0,
     'outstanding'       => 0.0,
-    'created'           => 0,
-    'created_value'     => 0.0,
     'cancellation_fees' => 0.0,
 ];
 
 $empty_html = $summary->render_html($empty_day);
 
-check_contains('a day with no bookings says so', $empty_html, 'No bookings for this day.');
-check_contains('...and still shows the date', $empty_html, '03.09.2026');
-check(
-    'no cancellation-fee line when there were none',
-    strpos($empty_html, 'Cancellation fees') === false,
-    true
-);
+check_contains('says so instead of rendering an empty table', $empty_html, 'No bookings were created on this day.');
+check_contains('...and still shows the date', $empty_html, '04.09.2026');
+check('...with no placeholders left over', preg_match('/\{[a-z_]+\}/', $empty_html), 0);
 
-// Room names are escaped, not injected into the markup.
+echo "\n-- escaping --\n";
+
 $injected = $summary->render_html(array_merge($empty_day, [
     'rooms' => [['name' => '<script>alert(1)</script>', 'bookings' => 1, 'hours' => 2.0, 'value' => 10.0]],
 ]));

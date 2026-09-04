@@ -1818,9 +1818,19 @@ class HRB_Database {
     public static function seed_branded_email_templates() {
         global $wpdb;
 
-        // Bump this when the bundled templates change to re-sync on the next load.
+        // Bump this when an existing template's design changes: it re-syncs
+        // every bundled template and therefore overwrites edits made in the
+        // admin editor.
         $design_version = '2026-07-16';
-        if (get_option('hrb_email_design_version') === $design_version) {
+
+        // Bump this when a template is *added* to the bundle. Missing templates
+        // are inserted; existing ones are left exactly as the team edited them.
+        $bundle_version = '2026-09-04-daily-summary';
+
+        $resync = (get_option('hrb_email_design_version') !== $design_version);
+        $add_missing = (get_option('hrb_email_bundle_version') !== $bundle_version);
+
+        if (!$resync && !$add_missing) {
             return;
         }
 
@@ -1851,6 +1861,10 @@ class HRB_Database {
             ));
 
             if ($existing_id) {
+                if (!$resync) {
+                    continue;
+                }
+
                 $wpdb->update(
                     $table,
                     array(
@@ -1883,6 +1897,7 @@ class HRB_Database {
         }
 
         update_option('hrb_email_design_version', $design_version);
+        update_option('hrb_email_bundle_version', $bundle_version);
     }
 
     /**

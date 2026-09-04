@@ -4014,3 +4014,12 @@ msgid_plural "from %d payments"
 msgstr[0] "aus %d Zahlung"
 msgstr[1] "aus %d Zahlungen"
 
+msgid "No bookings were created on this day."
+msgstr "An diesem Tag wurden keine Buchungen erstellt."
+
+msgid "Paid"
+msgstr "Bezahlt"
+
+msgid "Send an automatic daily summary of the bookings created that day, with room usage and revenue"
+msgstr "Automatische tägliche Zusammenfassung der an diesem Tag erstellten Buchungen senden, mit Raumauslastung und Umsatz"
+

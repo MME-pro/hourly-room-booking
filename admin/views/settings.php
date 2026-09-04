@@ -172,7 +172,7 @@ class HRB_Settings_Helper {
             'hrb_admin_email_notifications' => __('Send booking notifications to admin email', 'hourly-room-booking'),
             'hrb_staff_emails' => __('Everyone listed here gets an email for every new booking. Add or remove addresses at any time.', 'hourly-room-booking'),
             'hrb_staff_email_notifications' => __('Send booking notifications to the team addresses listed above', 'hourly-room-booking'),
-            'hrb_daily_summary_enabled' => __('Send an automatic daily summary of bookings, room usage and revenue', 'hourly-room-booking'),
+            'hrb_daily_summary_enabled' => __('Send an automatic daily summary of the bookings created that day, with room usage and revenue', 'hourly-room-booking'),
             'hrb_daily_summary_emails' => __('Who receives the daily summary. Leave empty to use the team addresses above.', 'hourly-room-booking'),
             'hrb_daily_summary_time' => __('When the summary is sent. At 00:00 it covers the day that just ended; at any later time it covers the current day up to that point.', 'hourly-room-booking'),
             'hrb_plugin_language' => __('Select the language for the plugin interface. This overrides the WordPress site language for this plugin only.', 'hourly-room-booking'),

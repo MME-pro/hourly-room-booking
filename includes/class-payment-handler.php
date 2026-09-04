@@ -247,21 +247,49 @@ class HRB_Payment_Handler {
             }
         }
         
-        // Record pending PayPal payment using centralized method
-        // Store the PayPal fee in the payment record for accurate tracking
-        $payment_manager = HRB_Payment_Manager::getInstance();
-        $payment_id = $payment_manager->create_payment(
-            $temp_booking_id,
-            $pricing['total_amount'],
-            'paypal',
-            HRB_Currency_Manager::getInstance()->get_currency_code(),
-            array(
-                'gateway_transaction_id' => $order['id'],
-                'status' => 'pending',
-                'fees' => $pricing['paypal_fee'] // Store PayPal fee in payment record
-            )
-        );
-        
+        // create_booking() above already opened a pending PayPal payment row for
+        // this booking. Attach the order to that row instead of inserting a
+        // second one: two pending rows for the same charge is what made the
+        // booking total come out doubled, and left an orphan row behind after
+        // the capture completed only one of them.
+        $existing_payment = $wpdb->get_row($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}hrb_payments
+             WHERE booking_id = %d
+               AND LOWER(payment_method) = 'paypal'
+               AND status = 'pending'
+               AND (transaction_id IS NULL OR transaction_id NOT LIKE 'ADD_%%')
+             ORDER BY id DESC LIMIT 1",
+            $temp_booking_id
+        ));
+
+        if ($existing_payment) {
+            $wpdb->update(
+                $wpdb->prefix . 'hrb_payments',
+                array(
+                    'gateway_transaction_id' => $order['id'],
+                    'amount'                 => $pricing['total_amount'],
+                    'fees'                   => $pricing['paypal_fee'],
+                ),
+                array('id' => $existing_payment->id),
+                array('%s', '%f', '%f'),
+                array('%d')
+            );
+        } else {
+            // No row to attach to (booking created outside the usual path).
+            $payment_manager = HRB_Payment_Manager::getInstance();
+            $payment_manager->create_payment(
+                $temp_booking_id,
+                $pricing['total_amount'],
+                'paypal',
+                HRB_Currency_Manager::getInstance()->get_currency_code(),
+                array(
+                    'gateway_transaction_id' => $order['id'],
+                    'status' => 'pending',
+                    'fees' => $pricing['paypal_fee'] // Store PayPal fee in payment record
+                )
+            );
+        }
+
         wp_send_json_success(array(
             'order_id' => $order['id'],
             'approval_url' => $this->get_approval_url($order['links'])
@@ -778,14 +806,16 @@ class HRB_Payment_Handler {
                 }
 
                 // The original charge is now captured, so no other pending row
-                // for it can still be live — those are abandoned checkout
-                // attempts, or the row a fallback insert bypassed. Retire them:
-                // left pending they are summed alongside the completed row and
-                // double the booking total. Additional charges (ADD_*) and
+                // for it can still be live. Those rows are duplicates of this
+                // same charge — nothing was ever collected on them — so they
+                // are removed rather than cancelled: a cancelled row would show
+                // up on the payments screen as a payment that never existed.
+                // Left pending they would be summed alongside the completed row
+                // and double the booking total. Additional charges (ADD_*) and
                 // cancellation fees are separate and stay untouched.
                 if (!$is_additional_payment) {
                     $wpdb->query($wpdb->prepare(
-                        "UPDATE {$wpdb->prefix}hrb_payments SET status = 'cancelled'
+                        "DELETE FROM {$wpdb->prefix}hrb_payments
                          WHERE booking_id = %d AND status = 'pending' AND id <> %d
                          AND (transaction_id IS NULL
                               OR (transaction_id NOT LIKE %s AND transaction_id NOT LIKE %s))",
@@ -1619,14 +1649,16 @@ class HRB_Payment_Handler {
                 }
 
                 // The original charge is now captured, so no other pending row
-                // for it can still be live — those are abandoned checkout
-                // attempts, or the row a fallback insert bypassed. Retire them:
-                // left pending they are summed alongside the completed row and
-                // double the booking total. Additional charges (ADD_*) and
+                // for it can still be live. Those rows are duplicates of this
+                // same charge — nothing was ever collected on them — so they
+                // are removed rather than cancelled: a cancelled row would show
+                // up on the payments screen as a payment that never existed.
+                // Left pending they would be summed alongside the completed row
+                // and double the booking total. Additional charges (ADD_*) and
                 // cancellation fees are separate and stay untouched.
                 if (!$is_additional_payment) {
                     $wpdb->query($wpdb->prepare(
-                        "UPDATE {$wpdb->prefix}hrb_payments SET status = 'cancelled'
+                        "DELETE FROM {$wpdb->prefix}hrb_payments
                          WHERE booking_id = %d AND status = 'pending' AND id <> %d
                          AND (transaction_id IS NULL
                               OR (transaction_id NOT LIKE %s AND transaction_id NOT LIKE %s))",

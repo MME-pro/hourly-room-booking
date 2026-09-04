@@ -5,10 +5,19 @@
  * Sends a scheduled summary of one day's figures — bookings, per-room usage
  * and revenue — to a configurable list of addresses.
  *
- * The summary always covers one whole calendar day: the day that ended at the
- * configured send time. At the default 00:00 that is the day that just
- * finished; set it to 18:00 and the mail covers the current day up to that
- * point. See resolve_summary_date().
+ * The summary covers the bookings that were *created* on the day, whatever
+ * date they are for: a booking taken on the 4th for the 12th belongs to the
+ * 4th's summary, together with its value. Money received is the exception —
+ * that is counted on the day it actually came in.
+ *
+ * Which calendar day is reported is the one that ended at the configured send
+ * time. At the default 00:00 that is the day that just finished; set it to
+ * 18:00 and the mail covers the current day up to that point. See
+ * resolve_summary_date().
+ *
+ * The mail is rendered from the branded "daily_summary_admin" email template,
+ * so its wording and layout are editable on the Email Templates screen like
+ * every other mail the plugin sends.
  *
  * @package HourlyRoomBooking
  * @since 1.6.0
@@ -36,6 +45,11 @@ class HRB_Daily_Summary {
      * Option remembering which send time the current schedule was built for
      */
     const SCHEDULE_STAMP = 'hrb_daily_summary_scheduled_for';
+
+    /**
+     * Key of the branded email template this summary is rendered from
+     */
+    const TEMPLATE_KEY = 'daily_summary_admin';
 
     /**
      * Get class instance
@@ -251,13 +265,7 @@ class HRB_Daily_Summary {
             self::local_time()
         );
         $figures = $this->collect($date);
-        $subject = sprintf(
-            /* translators: 1: company name, 2: date the summary covers */
-            __('%1$s — daily summary for %2$s', 'hourly-room-booking'),
-            get_option('hrb_company_name', get_bloginfo('name')),
-            date_i18n(get_option('hrb_date_format', 'd.m.Y'), strtotime($date))
-        );
-
+        $subject = $this->render_subject($figures);
         $message = $this->render_html($figures);
         $headers = [
             'Content-Type: text/html; charset=UTF-8',
@@ -336,22 +344,23 @@ class HRB_Daily_Summary {
             'date'              => $date,
             'total'             => 0,
             'by_status'         => [],
+            'by_payment_status' => [],
             'hours'             => 0.0,
             'value'             => 0.0,
             'rooms'             => [],
             'collected'         => 0.0,
             'collected_count'   => 0,
             'outstanding'       => 0.0,
-            'created'           => 0,
-            'created_value'     => 0.0,
             'cancellation_fees' => 0.0,
         ];
 
-        // Bookings taking place on the day, broken down by status.
+        // Everything below is about the bookings *entered* on this day,
+        // whatever date they are for: a booking taken today for the 12th
+        // belongs in today's summary, together with its value.
         $status_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT status, COUNT(*) AS bookings
              FROM {$bookings}
-             WHERE booking_date = %s
+             WHERE DATE(created_at) = %s
              GROUP BY status",
             $date
         ));
@@ -361,12 +370,29 @@ class HRB_Daily_Summary {
             $figures['total'] += (int) $row->bookings;
         }
 
+        // Payment status of those same bookings.
+        $payment_status_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT payment_status, COUNT(*) AS bookings
+             FROM {$bookings}
+             WHERE DATE(created_at) = %s
+             GROUP BY payment_status",
+            $date
+        ));
+
+        foreach ((array) $payment_status_rows as $row) {
+            $key = ('' === (string) $row->payment_status) ? 'pending' : $row->payment_status;
+
+            $figures['by_payment_status'][$key] =
+                (isset($figures['by_payment_status'][$key]) ? $figures['by_payment_status'][$key] : 0)
+                + (int) $row->bookings;
+        }
+
         // Hours and value of the bookings that actually stand.
         $totals = $wpdb->get_row($wpdb->prepare(
             "SELECT COALESCE(SUM(total_hours), 0) AS hours,
                     COALESCE(SUM(total_amount), 0) AS value
              FROM {$bookings}
-             WHERE booking_date = %s AND status NOT IN ('cancelled', 'no_show')",
+             WHERE DATE(created_at) = %s AND status NOT IN ('cancelled', 'no_show')",
             $date
         ));
 
@@ -375,7 +401,7 @@ class HRB_Daily_Summary {
             $figures['value'] = (float) $totals->value;
         }
 
-        // Per-room usage.
+        // Which rooms the new bookings were taken for.
         $room_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT r.name AS room_name,
                     COUNT(b.id) AS bookings,
@@ -383,7 +409,7 @@ class HRB_Daily_Summary {
                     COALESCE(SUM(b.total_amount), 0) AS value
              FROM {$bookings} b
              INNER JOIN {$rooms} r ON b.room_id = r.id
-             WHERE b.booking_date = %s AND b.status NOT IN ('cancelled', 'no_show')
+             WHERE DATE(b.created_at) = %s AND b.status NOT IN ('cancelled', 'no_show')
              GROUP BY b.room_id, r.name
              ORDER BY value DESC, r.name ASC",
             $date
@@ -399,10 +425,13 @@ class HRB_Daily_Summary {
         }
 
         // Money actually taken on the day, whichever booking it belonged to.
+        // This one deliberately stays on the payment date rather than the
+        // booking's creation date — it answers "what came in today".
         $collected = $wpdb->get_row($wpdb->prepare(
             "SELECT COUNT(*) AS payments, COALESCE(SUM(amount), 0) AS total
              FROM {$payments}
-             WHERE DATE(processed_at) = %s AND status IN ('completed', 'paid')",
+             WHERE DATE(COALESCE(processed_at, created_at)) = %s
+             AND status IN ('completed', 'paid')",
             $date
         ));
 
@@ -411,33 +440,20 @@ class HRB_Daily_Summary {
             $figures['collected']       = (float) $collected->total;
         }
 
-        // Still to be collected for the day's bookings.
+        // Still to be collected on the bookings taken today.
         $figures['outstanding'] = (float) $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(p.amount), 0)
              FROM {$payments} p
              INNER JOIN {$bookings} b ON p.booking_id = b.id
-             WHERE b.booking_date = %s AND p.status = 'pending'",
+             WHERE DATE(b.created_at) = %s AND p.status = 'pending'",
             $date
         ));
 
-        // Bookings entered on the day, whichever day they are for.
-        $created = $wpdb->get_row($wpdb->prepare(
-            "SELECT COUNT(*) AS bookings, COALESCE(SUM(total_amount), 0) AS value
-             FROM {$bookings}
-             WHERE DATE(created_at) = %s",
-            $date
-        ));
-
-        if ($created) {
-            $figures['created']       = (int) $created->bookings;
-            $figures['created_value'] = (float) $created->value;
-        }
-
-        // Cancellation fees charged for the day's bookings.
+        // Cancellation fees on the bookings taken today.
         $figures['cancellation_fees'] = (float) $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(cancellation_fee), 0)
              FROM {$bookings}
-             WHERE booking_date = %s",
+             WHERE DATE(created_at) = %s",
             $date
         ));
 
@@ -463,165 +479,191 @@ class HRB_Daily_Summary {
      * @return string HTML
      */
     public function render_html(array $figures) {
-        $date_label = date_i18n(
-            get_option('hrb_date_format', 'd.m.Y'),
-            strtotime($figures['date'])
-        );
+        $template = $this->get_template();
 
-        $status_labels = [
-            'confirmed' => __('Confirmed', 'hourly-room-booking'),
-            'pending'   => __('Pending', 'hourly-room-booking'),
-            'completed' => __('Completed', 'hourly-room-booking'),
-            'cancelled' => __('Cancelled', 'hourly-room-booking'),
-            'no_show'   => __('No show', 'hourly-room-booking'),
+        return $this->fill_template($template['html_content'], $figures);
+    }
+
+    /**
+     * Subject line for the summary
+     *
+     * @since 1.6.0
+     * @param array $figures Output of collect()
+     * @return string
+     */
+    public function render_subject(array $figures) {
+        $template = $this->get_template();
+
+        return wp_strip_all_tags($this->fill_template($template['subject'], $figures));
+    }
+
+    /**
+     * Load the summary email template
+     *
+     * Prefers the row in the email-templates table so the team can edit the
+     * wording and layout on the Email Templates screen like every other mail.
+     * Falls back to the bundled copy when the row is missing.
+     *
+     * @since 1.6.0
+     * @return array {
+     *     @type string $subject
+     *     @type string $html_content
+     * }
+     */
+    private function get_template() {
+        global $wpdb;
+
+        $row = $wpdb->get_row($wpdb->prepare(
+            "SELECT subject, html_content
+             FROM {$wpdb->prefix}hrb_email_templates
+             WHERE template_key = %s AND template_type = 'admin' AND is_active = 1",
+            self::TEMPLATE_KEY
+        ));
+
+        if ($row && !empty($row->html_content)) {
+            return [
+                'subject'      => (string) $row->subject,
+                'html_content' => (string) $row->html_content,
+            ];
+        }
+
+        return self::bundled_template();
+    }
+
+    /**
+     * The bundled copy of the summary template
+     *
+     * @since 1.6.0
+     * @return array
+     */
+    public static function bundled_template() {
+        $fallback = [
+            'subject'      => 'Tageszusammenfassung {summary_date} - {company_name}',
+            'html_content' => '<p>{summary_date}</p><p>{total_bookings}</p><p>{total_revenue}</p>',
         ];
 
-        $html  = '<!DOCTYPE html><html><head><meta charset="UTF-8">';
-        $html .= '<meta name="viewport" content="width=device-width, initial-scale=1.0">';
-        $html .= '<title>' . esc_html($date_label) . '</title></head>';
-        $html .= '<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#333;">';
-        $html .= '<div style="max-width:640px;margin:0 auto;padding:24px;">';
-
-        // Header
-        $html .= '<div style="background:#0073aa;color:#fff;padding:20px 24px;border-radius:6px 6px 0 0;">';
-        $html .= '<div style="font-size:18px;font-weight:bold;">'
-            . esc_html(get_option('hrb_company_name', get_bloginfo('name'))) . '</div>';
-        $html .= '<div style="font-size:14px;opacity:0.9;margin-top:4px;">'
-            . sprintf(
-                /* translators: %s: the date the summary covers */
-                esc_html__('Daily summary for %s', 'hourly-room-booking'),
-                esc_html($date_label)
-            ) . '</div>';
-        $html .= '</div>';
-
-        $html .= '<div style="background:#fff;padding:24px;border:1px solid #e1e5e9;border-top:0;border-radius:0 0 6px 6px;">';
-
-        // Headline figures
-        $html .= $this->render_stat_row([
-            __('Bookings', 'hourly-room-booking')       => (string) $figures['total'],
-            __('Hours booked', 'hourly-room-booking')   => $this->format_hours($figures['hours']),
-            __('Booking value', 'hourly-room-booking')  => hrb_format_amount($figures['value']),
-        ]);
-
-        $html .= $this->render_stat_row([
-            __('Payments received', 'hourly-room-booking') => hrb_format_amount($figures['collected'])
-                . ' (' . (int) $figures['collected_count'] . ')',
-            __('Outstanding', 'hourly-room-booking')       => hrb_format_amount($figures['outstanding']),
-            __('New bookings', 'hourly-room-booking')      => (string) $figures['created']
-                . ' · ' . hrb_format_amount($figures['created_value']),
-        ]);
-
-        // Status breakdown
-        if (!empty($figures['by_status'])) {
-            $rows = [];
-            foreach ($figures['by_status'] as $status => $count) {
-                $label = $status_labels[$status] ?? ucfirst(str_replace('_', ' ', $status));
-                $rows[] = [$label, (string) $count];
-            }
-            $html .= $this->render_table(__('By status', 'hourly-room-booking'), ['', ''], $rows);
+        $file = HRB_PLUGIN_DIR . 'includes/email-templates-data.php';
+        if (!file_exists($file)) {
+            return $fallback;
         }
 
-        // Per room
-        if (!empty($figures['rooms'])) {
-            $rows = [];
-            foreach ($figures['rooms'] as $room) {
-                $rows[] = [
-                    $room['name'],
-                    (string) $room['bookings'],
-                    $this->format_hours($room['hours']),
-                    hrb_format_amount($room['value']),
+        $templates = include $file;
+        if (!is_array($templates)) {
+            return $fallback;
+        }
+
+        foreach ($templates as $template) {
+            if (isset($template['template_key']) && $template['template_key'] === self::TEMPLATE_KEY) {
+                return [
+                    'subject'      => (string) $template['subject'],
+                    'html_content' => (string) $template['html_content'],
                 ];
             }
-            $html .= $this->render_table(
-                __('By room', 'hourly-room-booking'),
-                [
-                    __('Room', 'hourly-room-booking'),
-                    __('Bookings', 'hourly-room-booking'),
-                    __('Hours', 'hourly-room-booking'),
-                    __('Value', 'hourly-room-booking'),
-                ],
-                $rows
-            );
-        } else {
-            $html .= '<p style="color:#646970;margin:20px 0 0;">'
-                . esc_html__('No bookings for this day.', 'hourly-room-booking') . '</p>';
         }
 
-        if ($figures['cancellation_fees'] > 0) {
-            $html .= '<p style="color:#646970;margin:16px 0 0;font-size:13px;">'
-                . sprintf(
-                    /* translators: %s: formatted amount */
-                    esc_html__('Cancellation fees for this day: %s', 'hourly-room-booking'),
-                    esc_html(hrb_format_amount($figures['cancellation_fees']))
-                ) . '</p>';
+        return $fallback;
+    }
+
+    /**
+     * Replace the summary placeholders in a template string
+     *
+     * @since 1.6.0
+     * @param string $content Template with {placeholders}
+     * @param array  $figures Output of collect()
+     * @return string
+     */
+    private function fill_template($content, array $figures) {
+        $company_name = get_option('hrb_company_name', get_bloginfo('name'));
+        $company_logo = get_option('hrb_company_logo', '');
+
+        $logo_html = '';
+        if ($company_logo) {
+            $logo_html = '<img src="' . esc_url($company_logo) . '" alt="' . esc_attr($company_name) . '">';
         }
 
-        $html .= '</div>';
-        $html .= '<div style="text-align:center;color:#8c8f94;font-size:12px;padding:16px;">'
-            . esc_html__('Automated summary from the Hourly Room Booking plugin.', 'hourly-room-booking')
-            . '</div>';
-        $html .= '</div></body></html>';
+        $status = $figures['by_status'];
+
+        $replacements = [
+            '{summary_date}'        => date_i18n(get_option('hrb_date_format', 'd.m.Y'), strtotime($figures['date'])),
+            '{total_bookings}'      => (string) $figures['total'],
+            '{confirmed_bookings}'  => (string) (isset($status['confirmed']) ? $status['confirmed'] : 0),
+            '{pending_bookings}'    => (string) (isset($status['pending']) ? $status['pending'] : 0),
+            '{cancelled_bookings}'  => (string) (isset($status['cancelled']) ? $status['cancelled'] : 0),
+            '{completed_bookings}'  => (string) (isset($status['completed']) ? $status['completed'] : 0),
+            '{no_show_bookings}'    => (string) (isset($status['no_show']) ? $status['no_show'] : 0),
+            '{hours_booked}'        => $this->format_hours($figures['hours']),
+            '{total_revenue}'       => hrb_format_amount($figures['value']),
+            '{payments_received}'   => hrb_format_amount($figures['collected'])
+                . ' (' . (int) $figures['collected_count'] . ')',
+            '{outstanding}'         => hrb_format_amount($figures['outstanding']),
+            '{cancellation_fees}'   => hrb_format_amount($figures['cancellation_fees']),
+            '{payment_status_rows}' => $this->render_payment_status_rows($figures),
+            '{rooms_rows}'          => $this->render_room_rows($figures),
+            '{company_logo_html}'   => $logo_html,
+            '{company_logo}'        => esc_url($company_logo),
+            '{company_name}'        => esc_html($company_name),
+            '{company_phone}'       => esc_html(get_option('hrb_company_phone', '')),
+            '{company_email}'       => esc_html(get_option('hrb_company_email', get_option('admin_email'))),
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $content);
+    }
+
+    /**
+     * Table rows for the payment-status breakdown
+     *
+     * @param array $figures
+     * @return string
+     */
+    private function render_payment_status_rows(array $figures) {
+        $labels = [
+            'paid'      => __('Paid', 'hourly-room-booking'),
+            'completed' => __('Paid', 'hourly-room-booking'),
+            'pending'   => __('Pending', 'hourly-room-booking'),
+            'cancelled' => __('Cancelled', 'hourly-room-booking'),
+            'refunded'  => __('Refunded', 'hourly-room-booking'),
+            'failed'    => __('Failed', 'hourly-room-booking'),
+        ];
+
+        if (empty($figures['by_payment_status'])) {
+            return '<tr><td colspan="2" class="empty">'
+                . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
+                . '</td></tr>';
+        }
+
+        $html = '';
+        foreach ($figures['by_payment_status'] as $status => $count) {
+            $label = isset($labels[$status]) ? $labels[$status] : ucfirst(str_replace('_', ' ', $status));
+
+            $html .= '<tr><td>' . esc_html($label) . '</td>'
+                . '<td class="num">' . (int) $count . '</td></tr>';
+        }
 
         return $html;
     }
 
     /**
-     * Render a row of headline numbers
+     * Table rows for the per-room breakdown
      *
-     * @param array $stats Label => value
+     * @param array $figures
      * @return string
      */
-    private function render_stat_row(array $stats) {
-        $html = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:12px;"><tr>';
-
-        foreach ($stats as $label => $value) {
-            $html .= '<td style="width:33%;padding:12px;background:#f6f7f7;border-radius:4px;vertical-align:top;">';
-            $html .= '<div style="font-size:12px;color:#646970;text-transform:uppercase;letter-spacing:0.03em;">'
-                . esc_html($label) . '</div>';
-            $html .= '<div style="font-size:18px;font-weight:bold;color:#1d2327;margin-top:4px;">'
-                . esc_html($value) . '</div>';
-            $html .= '</td><td style="width:8px;"></td>';
+    private function render_room_rows(array $figures) {
+        if (empty($figures['rooms'])) {
+            return '<tr><td colspan="4" class="empty">'
+                . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
+                . '</td></tr>';
         }
 
-        $html .= '</tr></table>';
-
-        return $html;
-    }
-
-    /**
-     * Render a titled data table
-     *
-     * @param string $title   Section heading
-     * @param array  $headers Column headings ('' to omit the header row)
-     * @param array  $rows    List of rows, each a list of cell strings
-     * @return string
-     */
-    private function render_table($title, array $headers, array $rows) {
-        $html  = '<h3 style="font-size:14px;color:#1d2327;margin:24px 0 8px;">' . esc_html($title) . '</h3>';
-        $html .= '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" '
-            . 'style="border-collapse:collapse;font-size:14px;">';
-
-        if (implode('', $headers) !== '') {
-            $html .= '<tr>';
-            foreach ($headers as $index => $header) {
-                $align = $index === 0 ? 'left' : 'right';
-                $html .= '<th style="text-align:' . $align . ';padding:6px 8px;border-bottom:2px solid #e1e5e9;'
-                    . 'font-size:12px;color:#646970;text-transform:uppercase;">' . esc_html($header) . '</th>';
-            }
-            $html .= '</tr>';
+        $html = '';
+        foreach ($figures['rooms'] as $room) {
+            $html .= '<tr>'
+                . '<td>' . esc_html($room['name']) . '</td>'
+                . '<td class="num">' . (int) $room['bookings'] . '</td>'
+                . '<td class="num">' . esc_html($this->format_hours($room['hours'])) . '</td>'
+                . '<td class="num">' . esc_html(hrb_format_amount($room['value'])) . '</td>'
+                . '</tr>';
         }
-
-        foreach ($rows as $row) {
-            $html .= '<tr>';
-            foreach (array_values($row) as $index => $cell) {
-                $align = $index === 0 ? 'left' : 'right';
-                $html .= '<td style="text-align:' . $align . ';padding:8px;border-bottom:1px solid #f0f0f1;">'
-                    . esc_html($cell) . '</td>';
-            }
-            $html .= '</tr>';
-        }
-
-        $html .= '</table>';
 
         return $html;
     }

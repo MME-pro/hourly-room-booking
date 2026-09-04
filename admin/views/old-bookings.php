@@ -64,12 +64,64 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
 
         case 'delete_booking':
             if ($post_booking_id && current_user_can('hrb_manage_bookings')) {
+                // delete_booking() returns true or a WP_Error, and a WP_Error
+                // object is truthy — it has to be tested with === true or a
+                // failed delete reports success.
                 $result = $booking_manager->delete_booking($post_booking_id);
-                if ($result) {
+                if ($result === true) {
                     echo '<div class="notice notice-success"><p>' . __('Booking deleted successfully.', 'hourly-room-booking') . '</p></div>';
                 } else {
                     echo '<div class="notice notice-error"><p>' . __('Failed to delete booking.', 'hourly-room-booking') . '</p></div>';
                 }
+            }
+            break;
+
+        case 'bulk_delete_bookings':
+            if (!current_user_can('hrb_manage_bookings')) {
+                echo '<div class="notice notice-error"><p>' . __('You are not allowed to delete bookings.', 'hourly-room-booking') . '</p></div>';
+                break;
+            }
+
+            // Sent as a comma separated list built by the list-table checkboxes.
+            $bulk_ids = HRB_Booking_Manager::parse_booking_id_list($_POST['booking_ids'] ?? '');
+
+            if (empty($bulk_ids)) {
+                echo '<div class="notice notice-warning"><p>' . __('No bookings were selected.', 'hourly-room-booking') . '</p></div>';
+                break;
+            }
+
+            $bulk_deleted = 0;
+            $bulk_failed  = [];
+
+            foreach ($bulk_ids as $bulk_id) {
+                // Each delete runs in its own transaction, so one failure does
+                // not roll back the bookings already removed.
+                if ($booking_manager->delete_booking($bulk_id) === true) {
+                    $bulk_deleted++;
+                } else {
+                    $bulk_failed[] = $bulk_id;
+                }
+            }
+
+            if ($bulk_deleted > 0) {
+                echo '<div class="notice notice-success"><p>' . sprintf(
+                    /* translators: %d: number of bookings deleted */
+                    _n('%d booking deleted.', '%d bookings deleted.', $bulk_deleted, 'hourly-room-booking'),
+                    $bulk_deleted
+                ) . '</p></div>';
+            }
+
+            if (!empty($bulk_failed)) {
+                echo '<div class="notice notice-error"><p>' . sprintf(
+                    /* translators: %s: comma separated list of booking IDs */
+                    _n(
+                        'Could not delete booking #%s.',
+                        'Could not delete these bookings: #%s.',
+                        count($bulk_failed),
+                        'hourly-room-booking'
+                    ),
+                    esc_html(implode(', #', $bulk_failed))
+                ) . '</p></div>';
             }
             break;
 
@@ -425,9 +477,36 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                     <div class="hrb-filter-actions">
                         <button type="submit" class="button"><?php _e('Filter', 'hourly-room-booking'); ?></button>
                         <a href="<?php echo admin_url('admin.php?page=hrb-old-bookings'); ?>" class="button"><?php _e('Clear', 'hourly-room-booking'); ?></a>
+
+                        <?php if (current_user_can('hrb_manage_bookings')): ?>
+                            <?php // type="button" so it never submits the filter form; it posts
+                                  // the hidden bulk form below instead. ?>
+                            <button
+                                type="button"
+                                id="hrb-bulk-delete-btn"
+                                class="button hrb-bulk-delete-btn"
+                                title="<?php esc_attr_e('Select bookings with the checkboxes to delete several at once.', 'hourly-room-booking'); ?>"
+                                disabled
+                            >
+                                <span class="dashicons dashicons-trash"></span>
+                                <?php _e('Delete selected', 'hourly-room-booking'); ?>
+                                <span class="hrb-bulk-count" id="hrb-bulk-count">0</span>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </form>
+
+            <?php if (current_user_can('hrb_manage_bookings')): ?>
+                <?php // Kept out of the filter form (a GET form cannot carry this POST,
+                      // and the table rows have their own forms so it cannot live there
+                      // either). The checkboxes feed it through JavaScript. ?>
+                <form method="POST" id="hrb-bulk-delete-form" class="hrb-bulk-delete-form">
+                    <?php wp_nonce_field('hrb_admin_action', 'hrb_nonce'); ?>
+                    <input type="hidden" name="action" value="bulk_delete_bookings">
+                    <input type="hidden" name="booking_ids" id="hrb-bulk-ids" value="">
+                </form>
+            <?php endif; ?>
         </div>
 
         <!-- Bookings Table -->
@@ -457,6 +536,12 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                 <table class="wp-list-table widefat striped">
                     <thead>
                         <tr>
+                            <?php if (current_user_can('hrb_manage_bookings')): ?>
+                                <td class="manage-column column-cb check-column">
+                                    <label class="screen-reader-text" for="hrb-select-all"><?php _e('Select all bookings', 'hourly-room-booking'); ?></label>
+                                    <input type="checkbox" id="hrb-select-all">
+                                </td>
+                            <?php endif; ?>
                             <th scope="col" class="column-booking-id">
                                 <?php _e('Booking ID', 'hourly-room-booking'); ?>
                             </th>
@@ -489,6 +574,20 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                     <tbody>
                         <?php foreach ($bookings as $booking): ?>
                             <tr>
+                                <?php if (current_user_can('hrb_manage_bookings')): ?>
+                                    <th scope="row" class="check-column" data-label="<?php esc_attr_e('Select', 'hourly-room-booking'); ?>">
+                                        <label class="screen-reader-text" for="hrb-cb-<?php echo esc_attr($booking['id']); ?>">
+                                            <?php printf(__('Select booking %s', 'hourly-room-booking'), esc_html($booking['booking_reference'])); ?>
+                                        </label>
+                                        <input
+                                            type="checkbox"
+                                            class="hrb-bulk-cb"
+                                            id="hrb-cb-<?php echo esc_attr($booking['id']); ?>"
+                                            value="<?php echo esc_attr($booking['id']); ?>"
+                                            data-booking-reference="<?php echo esc_attr($booking['booking_reference']); ?>"
+                                        >
+                                    </th>
+                                <?php endif; ?>
                                 <td class="column-booking-id">
                                     <strong><a href="<?php echo admin_url('admin.php?page=hrb-old-bookings&action=view&id=' . $booking['id']); ?>">
                                             #<?php echo esc_html($booking['booking_reference']); ?>
@@ -812,6 +911,52 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
     .hrb-filter-actions .button:hover {
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    }
+
+    /* Bulk delete sits next to Filter/Clear but must not look like them:
+       outlined until something is selected, solid red on hover. */
+    .hrb-filter-actions .hrb-bulk-delete-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        color: #b91c1c;
+        border: 2px solid #b91c1c;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:hover:not(:disabled) {
+        background: #b91c1c;
+        color: #fff;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:disabled {
+        background: #f6f7f7;
+        color: #a7aaad;
+        border-color: #dcdcde;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn .dashicons {
+        width: 16px;
+        height: 16px;
+        font-size: 16px;
+    }
+
+    .hrb-filter-actions .hrb-bulk-count {
+        display: inline-block;
+        min-width: 20px;
+        padding: 0 6px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 18px;
+        text-align: center;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:disabled .hrb-bulk-count {
+        display: none;
     }
 
     /* Enhanced Table Section */
@@ -1849,6 +1994,104 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                 $(this).fadeOut();
             }
         });
+    });
+
+    // Bulk selection.
+    //
+    // The checkboxes sit inside the table, which already contains per-row
+    // forms, so they cannot live in the bulk form itself. Their values are
+    // collected into its hidden field right before submit.
+    jQuery(document).ready(function($) {
+        var $form = $('#hrb-bulk-delete-form');
+        if (!$form.length) {
+            return;
+        }
+
+        var $selectAll = $('#hrb-select-all');
+        var $button = $('#hrb-bulk-delete-btn');
+        var $count = $('#hrb-bulk-count');
+        var $ids = $('#hrb-bulk-ids');
+
+        function selected() {
+            return $('.hrb-bulk-cb:checked');
+        }
+
+        function refresh() {
+            var $checked = selected();
+            var total = $('.hrb-bulk-cb').length;
+
+            $count.text($checked.length);
+            $button.prop('disabled', $checked.length === 0);
+
+            $selectAll.prop('checked', total > 0 && $checked.length === total);
+            $selectAll.prop('indeterminate', $checked.length > 0 && $checked.length < total);
+        }
+
+        $selectAll.on('change', function() {
+            $('.hrb-bulk-cb').prop('checked', $(this).is(':checked'));
+            refresh();
+        });
+
+        $(document).on('change', '.hrb-bulk-cb', refresh);
+
+        $button.on('click', function(e) {
+            e.preventDefault();
+
+            var $checked = selected();
+            if (!$checked.length) {
+                return;
+            }
+
+            var ids = $checked.map(function() { return $(this).val(); }).get();
+            var references = $checked.map(function() {
+                return $(this).data('booking-reference');
+            }).get();
+
+            // Keep the confirmation readable when a lot is selected.
+            var shown = references.slice(0, 10).join(', ');
+            if (references.length > 10) {
+                shown += ' … (+' + (references.length - 10) + ')';
+            }
+
+            function submitForm() {
+                $ids.val(ids.join(','));
+                $button.prop('disabled', true);
+                $form.get(0).submit();
+            }
+
+            if (typeof window.hrbShowAlertDialog !== 'function') {
+                if (window.confirm(<?php echo json_encode(__('Are you sure you want to delete the selected bookings?', 'hourly-room-booking')); ?>)) {
+                    submitForm();
+                }
+                return;
+            }
+
+            window.hrbShowAlertDialog(
+                <?php echo json_encode(__('Are you sure you want to delete the selected bookings?', 'hourly-room-booking')); ?>,
+                {
+                    warningMessage: <?php echo json_encode(__('This action cannot be undone. Payments and invoices belonging to these bookings are removed as well.', 'hourly-room-booking')); ?>,
+                    title: <?php echo json_encode(__('Delete Bookings', 'hourly-room-booking')); ?>,
+                    details: [
+                        {
+                            label: <?php echo json_encode(__('Selected:', 'hourly-room-booking')); ?>,
+                            value: ids.length,
+                            class: 'original'
+                        },
+                        {
+                            label: <?php echo json_encode(__('Booking References:', 'hourly-room-booking')); ?>,
+                            value: shown,
+                            class: 'original'
+                        }
+                    ],
+                    confirmText: <?php echo json_encode(__('Delete', 'hourly-room-booking')); ?>,
+                    cancelText: <?php echo json_encode(__('Cancel', 'hourly-room-booking')); ?>,
+                    type: 'danger'
+                },
+                submitForm
+            );
+        });
+
+        refresh();
     });
 
     // Delete booking confirmation function

@@ -3561,9 +3561,36 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     <div class="hrb-filter-actions">
                         <button type="submit" class="button"><?php _e('Filter', 'hourly-room-booking'); ?></button>
                         <a href="<?php echo admin_url('admin.php?page=hrb-bookings'); ?>" class="button"><?php _e('Clear', 'hourly-room-booking'); ?></a>
+
+                        <?php if (current_user_can('hrb_manage_bookings')): ?>
+                            <?php // type="button" so it never submits the filter form; it posts
+                                  // the hidden bulk form below instead. ?>
+                            <button
+                                type="button"
+                                id="hrb-bulk-delete-btn"
+                                class="button hrb-bulk-delete-btn"
+                                title="<?php esc_attr_e('Select bookings with the checkboxes to delete several at once.', 'hourly-room-booking'); ?>"
+                                disabled
+                            >
+                                <span class="dashicons dashicons-trash"></span>
+                                <?php _e('Delete selected', 'hourly-room-booking'); ?>
+                                <span class="hrb-bulk-count" id="hrb-bulk-count">0</span>
+                            </button>
+                        <?php endif; ?>
                     </div>
                 </div>
             </form>
+
+            <?php if (current_user_can('hrb_manage_bookings')): ?>
+                <?php // Kept out of the filter form (a GET form cannot carry this POST,
+                      // and the table rows have their own forms so it cannot live there
+                      // either). The checkboxes feed it through JavaScript. ?>
+                <form method="POST" id="hrb-bulk-delete-form" class="hrb-bulk-delete-form">
+                    <?php wp_nonce_field('hrb_admin_action', 'hrb_nonce'); ?>
+                    <input type="hidden" name="action" value="bulk_delete_bookings">
+                    <input type="hidden" name="booking_ids" id="hrb-bulk-ids" value="">
+                </form>
+            <?php endif; ?>
         </div>
 
         <!-- Bookings Table -->
@@ -3590,25 +3617,6 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             ?>
                         </small>
                     </div>
-                <?php endif; ?>
-
-                <?php if (current_user_can('hrb_manage_bookings')): ?>
-                    <?php // Kept outside the table: the rows already contain their
-                          // own forms and nesting forms is invalid HTML. The
-                          // checkboxes feed this one through JavaScript. ?>
-                    <form method="POST" id="hrb-bulk-delete-form" class="hrb-bulk-actions">
-                        <?php wp_nonce_field('hrb_admin_action', 'hrb_nonce'); ?>
-                        <input type="hidden" name="action" value="bulk_delete_bookings">
-                        <input type="hidden" name="booking_ids" id="hrb-bulk-ids" value="">
-
-                        <button type="button" id="hrb-bulk-delete-btn" class="button hrb-bulk-delete-btn" disabled>
-                            <span class="dashicons dashicons-trash"></span>
-                            <?php _e('Delete selected', 'hourly-room-booking'); ?>
-                            <span class="hrb-bulk-count" id="hrb-bulk-count">0</span>
-                        </button>
-
-                        <span class="hrb-bulk-hint"><?php _e('Select bookings with the checkboxes to delete several at once.', 'hourly-room-booking'); ?></span>
-                    </form>
                 <?php endif; ?>
 
                 <table class="wp-list-table widefat striped">
@@ -4012,6 +4020,52 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
     .hrb-filter-actions .button:hover {
         transform: translateY(-1px);
         box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    }
+
+    /* Bulk delete sits next to Filter/Clear but must not look like them:
+       outlined until something is selected, solid red on hover. */
+    .hrb-filter-actions .hrb-bulk-delete-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: #fff;
+        color: #b91c1c;
+        border: 2px solid #b91c1c;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:hover:not(:disabled) {
+        background: #b91c1c;
+        color: #fff;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:disabled {
+        background: #f6f7f7;
+        color: #a7aaad;
+        border-color: #dcdcde;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn .dashicons {
+        width: 16px;
+        height: 16px;
+        font-size: 16px;
+    }
+
+    .hrb-filter-actions .hrb-bulk-count {
+        display: inline-block;
+        min-width: 20px;
+        padding: 0 6px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.12);
+        font-size: 12px;
+        line-height: 18px;
+        text-align: center;
+    }
+
+    .hrb-filter-actions .hrb-bulk-delete-btn:disabled .hrb-bulk-count {
+        display: none;
     }
 
     /* Enhanced Table Section */

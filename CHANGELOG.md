@@ -5,6 +5,24 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-04
+
+### Added
+- **Bulk delete on the Old Bookings list**, matching the All Bookings screen: a checkbox column with select-all, a confirmation naming the bookings involved, and a notice reporting exactly which ones could not be removed.
+
+### Fixed
+- **PayPal bookings produced a stray "cancelled" payment entry.** Every PayPal booking was opening two pending payment rows — one from `create_booking()`, a second from `create_paypal_order()` — of which the capture only ever completed one. The 1.6.0 fix retired the leftover so it could no longer double the booking total, but a retired row still showed on the payments screen as a payment that never existed. `create_paypal_order()` now attaches the PayPal order to the row that already exists, so only one row is ever created; the post-capture cleanup removes stray rows instead of cancelling them, and is now only a safety net for older data.
+- **A failed delete on the Old Bookings list reported success.** `delete_booking()` returns a `WP_Error` on failure, which is truthy, so the notice always said the booking was deleted. (The same bug was fixed on All Bookings in 1.6.0.)
+
+### Changed
+- **The daily summary now counts the bookings created that day**, whatever date they are for: a booking taken on the 4th for the 12th belongs to the 4th's summary, together with its value. It previously reported the bookings taking place that day. Money received still counts on the day it actually came in.
+- **The daily summary reports booking status and payment status**: confirmed / pending / cancelled counts, plus a payment-status breakdown of those same bookings.
+- **The daily summary is rendered from a branded email template** (`daily_summary_admin`), so its wording and layout are editable on the Email Templates screen like every other mail the plugin sends. It follows the same layout as the existing templates — company logo header, details table, highlighted total, company footer.
+- **The bulk-delete button now sits in the filters bar** next to Filter and Clear on both booking lists, rather than in a bar of its own. It is outlined rather than solid so a destructive action is not mistaken for Filter, and is visibly disabled until something is selected.
+
+### Database
+- New templates added to the bundle are now inserted without re-syncing the existing ones, so the daily-summary template lands without overwriting templates edited in the admin editor (tracked by `hrb_email_bundle_version`).
+
 ## [1.6.0] - 2026-09-03
 
 ### Added
