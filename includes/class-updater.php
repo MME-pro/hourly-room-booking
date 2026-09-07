@@ -47,9 +47,24 @@ class HRB_Updater {
     const CACHE_KEY = 'hrb_github_release';
 
     /**
-     * How long a release lookup is cached, in seconds (6 hours)
+     * How long a release lookup is cached once an update is pending (6 hours)
+     *
+     * Nothing is gained by re-asking GitHub while the update is already on the
+     * plugins screen waiting to be installed.
      */
     const CACHE_TTL = 21600;
+
+    /**
+     * How long a release lookup is cached while the site is up to date
+     *
+     * This is the window a freshly published release has to wait in, so it is
+     * deliberately short. WordPress refreshes its own update transient far
+     * more often than every six hours, and each of those refreshes used to be
+     * answered from a six-hour cache: a site could sit on "up to date" for
+     * most of a day after a release went out, with GitHub answering correctly
+     * the whole time. Only a manual "Check again" broke through.
+     */
+    const IDLE_TTL = 1800;
 
     /**
      * Plugin basename, e.g. "hourly-room-booking-main/hourly-room-booking.php"
@@ -448,11 +463,32 @@ class HRB_Updater {
             'requires_php' => $header_data['requires_php'],
         ];
 
-        set_transient(self::CACHE_KEY, $data, self::CACHE_TTL);
+        set_transient(self::CACHE_KEY, $data, self::cache_ttl_for($data['version'], HRB_VERSION));
 
         return $data;
     }
 
+    /**
+     * How long to cache a release lookup
+     *
+     * Long while an update is pending - it is already being offered, so there
+     * is nothing to discover. Short while the site is up to date, because that
+     * is precisely the state in which a new release needs to be noticed.
+     *
+     * @since 1.9.1
+     * @param string $remote_version    Version of the latest release
+     * @param string $installed_version Version running on this site
+     * @return int Seconds
+     */
+    public static function cache_ttl_for($remote_version, $installed_version) {
+        if ('' === (string) $remote_version) {
+            return self::IDLE_TTL;
+        }
+
+        return version_compare($remote_version, $installed_version, '>')
+            ? self::CACHE_TTL
+            : self::IDLE_TTL;
+    }
     /**
      * Choose the download URL for a release
      *

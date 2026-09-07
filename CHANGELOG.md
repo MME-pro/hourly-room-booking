@@ -5,6 +5,10 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-09-07
+
+### Fixed
+- **Sites were told they were up to date for hours after a release went out.** The updater cached its GitHub lookup for six hours no matter what it found. WordPress refreshes its own plugin update transient far more often than that — roughly hourly while an admin is on the plugins screen — and every one of those refreshes was answered from a cache still holding the *previous* release, with GitHub returning the new one correctly the whole time. Only a manual "Check again" (which sets `force-check`) broke through, which is why the update appeared to simply never arrive. The lookup is now cached for six hours only while an update is actually pending, and for 30 minutes while the site is up to date — the state in which a new release has to be noticed.
 ## [1.9.0] - 2026-09-07
 
 ### Added

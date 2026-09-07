@@ -44,8 +44,15 @@ confirmation at each step:
 plugin into the native WordPress update system and serves updates from GitHub
 releases:
 
-- Reads `releases/latest`, cached in the `hrb_github_release` transient for 6 hours
-  (15 minutes on failure, so a GitHub outage does not stall admin page loads).
+- Reads `releases/latest`, cached in the `hrb_github_release` transient. How long
+  depends on the answer (`HRB_Updater::cache_ttl_for()`): 6 hours once an update
+  is pending — it is already being offered, so re-asking buys nothing — and 30
+  minutes while the site is up to date, because that is the state a new release
+  has to be noticed in. A six-hour cache in *both* states was the bug behind
+  three "the update never arrived" reports: WordPress refreshes its own update
+  transient about hourly, and every one of those refreshes was answered from a
+  cache holding the previous release. 15 minutes on failure, so a GitHub outage
+  does not stall admin page loads.
 - Compares the tag (leading `v` stripped) against `HRB_VERSION`.
 - Prefers the release's `.zip` asset over the source zipball.
 - `upgrader_source_selection` renames the extracted folder to the installed
