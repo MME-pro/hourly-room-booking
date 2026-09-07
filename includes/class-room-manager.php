@@ -671,5 +671,97 @@ class HRB_Room_Manager {
         if ($e <= $s) { return false; } // cross-midnight not allowed within a restricted window
         return ($s >= $from_min && $e <= $to_min);
     }
+
+    /**
+     * Decide what a room's state means for the booking form
+     *
+     * Kept free of database access so the rule itself can be exercised
+     * directly. The order matters: a room outside its bookable hours is
+     * reported as such even if something is also booked in it, because that is
+     * the reason the admin cannot pick it whatever else changes.
+     *
+     * @since 1.7.3
+     * @param bool $in_window   Booking fits the room's bookable hours
+     * @param bool $has_conflict Another booking overlaps this slot
+     * @param bool $is_locked   A maintenance lock covers this slot
+     * @return array {
+     *     @type bool   $available Whether the room can be selected
+     *     @type string $reason    One of: free, outside_hours, booked, locked
+     * }
+     */
+    public static function describe_room_availability($in_window, $has_conflict, $is_locked) {
+        if (!$in_window) {
+            return ['available' => false, 'reason' => 'outside_hours'];
+        }
+
+        if ($has_conflict) {
+            return ['available' => false, 'reason' => 'booked'];
+        }
+
+        // A maintenance lock does not block an admin — they set it — but it is
+        // worth saying so on the option rather than letting them move a booking
+        // into a room that is meant to be out of service.
+        if ($is_locked) {
+            return ['available' => true, 'reason' => 'locked'];
+        }
+
+        return ['available' => true, 'reason' => 'free'];
+    }
+
+    /**
+     * Availability of every room for one date and time range
+     *
+     * Answers the question the booking form's room dropdown needs: which rooms
+     * can this booking actually be moved into? The checks mirror what
+     * HRB_Booking_Manager::validate_booking_data() and update_booking() enforce
+     * on save, so the form cannot offer a room the save would then reject.
+     *
+     * @since 1.7.3
+     * @param string $date               Booking date, Y-m-d
+     * @param string $start_time         Start time, H:i:s
+     * @param string $end_time           End time, H:i:s
+     * @param int    $exclude_booking_id Booking being edited (its own slot is not a conflict)
+     * @return array List of rooms with an availability verdict
+     */
+    public function get_rooms_availability($date, $start_time, $end_time, $exclude_booking_id = 0) {
+        $rooms  = $this->get_all_rooms('all');
+        $result = [];
+
+        foreach ($rooms as $room) {
+            $in_window = $this->is_time_within_availability($room, $start_time, $end_time);
+
+            // Only ask the database when the room could be used at all.
+            $has_conflict = false;
+            $is_locked    = false;
+
+            if ($in_window) {
+                $has_conflict = (bool) HRB_Database::check_booking_conflict(
+                    $room->id,
+                    $date,
+                    $start_time,
+                    $end_time,
+                    $exclude_booking_id ?: null
+                );
+
+                if (!$has_conflict) {
+                    $is_locked = (bool) HRB_Database::is_slot_locked($room->id, $date, $start_time, $end_time);
+                }
+            }
+
+            $verdict = self::describe_room_availability($in_window, $has_conflict, $is_locked);
+
+            $result[] = [
+                'id'        => (int) $room->id,
+                'name'      => $room->name,
+                'is_active' => (int) $room->is_active,
+                'available' => $verdict['available'],
+                'reason'    => $verdict['reason'],
+                'available_from' => isset($room->available_from) ? $room->available_from : null,
+                'available_to'   => isset($room->available_to) ? $room->available_to : null,
+            ];
+        }
+
+        return $result;
+    }
 }
 ?>

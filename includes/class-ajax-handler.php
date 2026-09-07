@@ -57,6 +57,9 @@ class HRB_Ajax_Handler {
 
         add_action('wp_ajax_hrb_get_available_time_slots', array($this, 'get_available_time_slots'));
         add_action('wp_ajax_nopriv_hrb_get_available_time_slots', array($this, 'get_available_time_slots'));
+
+        // Admin only: which rooms this booking can actually be moved into.
+        add_action('wp_ajax_hrb_get_room_availability', array($this, 'get_room_availability'));
         
         add_action('wp_ajax_hrb_get_room_pricing', array($this, 'get_room_pricing'));
         add_action('wp_ajax_hrb_get_room_pricing_data', array($this, 'get_room_pricing_data'));
@@ -1210,6 +1213,61 @@ class HRB_Ajax_Handler {
             'slots' => $available_slots,
             'message' => sprintf(__('%d time slots available', 'hourly-room-booking'), count($available_slots))
         ));
+    }
+
+    /**
+     * Which rooms are free for a given date and time range
+     *
+     * Feeds the room dropdown on the admin booking form so a booking cannot be
+     * moved into a room that is already taken, or into one that is closed at
+     * that time of day. The booking being edited is excluded from the conflict
+     * check, otherwise it would always collide with itself.
+     *
+     * @since 1.7.3
+     */
+    public function get_room_availability() {
+        check_ajax_referer('hrb_nonce', 'nonce');
+
+        if (!current_user_can('hrb_manage_bookings') && !current_user_can('manage_options')) {
+            wp_send_json_error(__('Insufficient permissions', 'hourly-room-booking'));
+            return;
+        }
+
+        $date       = sanitize_text_field($_POST['date'] ?? '');
+        $start_time = sanitize_text_field($_POST['start_time'] ?? '');
+        $end_time   = sanitize_text_field($_POST['end_time'] ?? '');
+        $booking_id = intval($_POST['booking_id'] ?? 0);
+
+        if (empty($date) || empty($start_time) || empty($end_time)) {
+            wp_send_json_error(__('Select a date and time first', 'hourly-room-booking'));
+            return;
+        }
+
+        $rooms = HRB_Room_Manager::getInstance()->get_rooms_availability(
+            $date,
+            $start_time,
+            $end_time,
+            $booking_id
+        );
+
+        // Wording lives here so the form does not have to know the rule.
+        $labels = [
+            'free'         => '',
+            'locked'       => __('maintenance lock', 'hourly-room-booking'),
+            'booked'       => __('already booked', 'hourly-room-booking'),
+            'outside_hours'=> __('closed at this time', 'hourly-room-booking'),
+        ];
+
+        foreach ($rooms as &$room) {
+            $room['label'] = isset($labels[$room['reason']]) ? $labels[$room['reason']] : '';
+        }
+        unset($room);
+
+        wp_send_json_success([
+            'rooms' => $rooms,
+            'date'  => $date,
+            'range' => substr($start_time, 0, 5) . ' - ' . substr($end_time, 0, 5),
+        ]);
     }
 
     /**

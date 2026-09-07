@@ -5,6 +5,20 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-09-04
+
+### Added
+- **Room availability in the booking form's room dropdown.** Moving a booking to another room now respects that room's own diary: every room is marked free or not for the date and time selected, and the ones that cannot take the booking are disabled with the reason — already booked, closed at this time, or under a maintenance lock (which an admin may still override). The booking being edited is excluded from the conflict check, so its own room never looks taken. The checks mirror what the save enforces, including the cooldown between bookings, so the form cannot offer a room the save would then reject.
+- **Bank details in the settings** (account holder, IBAN, BIC) under Company Information, used for the cancellation fee.
+- **A PDF invoice for the cancellation fee**, attached to the cancellation email. It carries the company header, the customer, the booking reference, the €15 charge and the bank account the fee is to be transferred to, and states that PayPal is not accepted for it. The document is not written to the invoices table — that holds one row per booking — so its number is derived from the booking reference and regenerating it is idempotent.
+
+### Changed
+- **The cancellation fee now applies to every cancellation** of an unpaid cash/on-site booking, however far ahead it is cancelled. It was previously charged only inside the cancellation window.
+- **The fee is settled by bank transfer, not on-site.** The cancellation email now carries the account holder, IBAN, BIC and the booking reference to use as the payment reference, and says plainly that PayPal is not accepted for the fee. Customers who booked and paid online are unaffected: they are never charged the fee, so their cancellation email carries no fee section and no invoice.
+
+### Fixed
+- The cancellation-fee invoice went out unaddressed: the customer name and address live on the customer record for a normal booking, and the invoice was built without it.
+
 ## [1.7.2] - 2026-09-04
 
 ### Fixed

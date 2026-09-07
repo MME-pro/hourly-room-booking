@@ -4023,3 +4023,79 @@ msgstr "Bezahlt"
 msgid "Send an automatic daily summary of the bookings created that day, with room usage and revenue"
 msgstr "Automatische tägliche Zusammenfassung der an diesem Tag erstellten Buchungen senden, mit Raumauslastung und Umsatz"
 
+msgid "closed at this time"
+msgstr "zu dieser Zeit geschlossen"
+
+msgid "maintenance lock"
+msgstr "Wartungssperre"
+
+msgid "Select a date and time first"
+msgstr "Bitte zuerst Datum und Uhrzeit wählen"
+
+msgid "This room is not available for the selected date and time. Pick another room or another slot."
+msgstr "Dieser Raum ist zum gewählten Datum und zur gewählten Zeit nicht verfügbar. Bitte einen anderen Raum oder einen anderen Zeitraum wählen."
+
+
+msgid "Account Holder"
+msgstr "Kontoinhaber"
+
+msgid "IBAN"
+msgstr "IBAN"
+
+msgid "BIC"
+msgstr "BIC"
+
+msgid "Bank details for the cancellation-fee invoice. The fee is payable by transfer only."
+msgstr "Bankverbindung für die Stornogebühren-Rechnung. Die Gebühr ist ausschließlich per Überweisung zu zahlen."
+
+msgid "Cancellation Fee Invoice"
+msgstr "Rechnung über Stornogebühr"
+
+msgid "Invoice number"
+msgstr "Rechnungsnummer"
+
+msgid "Issue date"
+msgstr "Rechnungsdatum"
+
+msgid "Due date"
+msgstr "Fällig am"
+
+msgid "From"
+msgstr "Von"
+
+msgid "To"
+msgstr "An"
+
+msgid "Cancellation fee"
+msgstr "Stornogebühr"
+
+msgid "Booking %1$s of %2$s"
+msgstr "Buchung %1$s vom %2$s"
+
+msgid "Please transfer the amount to"
+msgstr "Bitte überweisen Sie den Betrag an"
+
+msgid "Payment by PayPal is not accepted for the cancellation fee."
+msgstr "Eine Zahlung der Stornogebühr per PayPal ist nicht möglich."
+
+msgid "Please use the booking reference as the payment reference."
+msgstr "Bitte geben Sie die Buchungsnummer als Verwendungszweck an."
+
+msgid "Account holder"
+msgstr "Kontoinhaber"
+
+msgid "A cancellation fee of %s applies and must be transferred to our bank account. PayPal is not accepted for this fee."
+msgstr "Es fällt eine Stornogebühr von %s an, die auf unser Bankkonto zu überweisen ist. PayPal ist für diese Gebühr nicht möglich."
+
+msgid "Cancellation fee: %s"
+msgstr "Stornogebühr: %s"
+
+msgid "Please transfer the amount to:"
+msgstr "Bitte überweisen Sie den Betrag an:"
+
+msgid "This booking has no cancellation fee"
+msgstr "Für diese Buchung fällt keine Stornogebühr an"
+
+msgid "Failed to create the cancellation fee invoice"
+msgstr "Die Stornogebühren-Rechnung konnte nicht erstellt werden"
+

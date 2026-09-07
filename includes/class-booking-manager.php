@@ -1143,14 +1143,9 @@ class HRB_Booking_Manager {
             return false;
         }
 
-        // Only within the cancellation window before the booking start.
-        $hours = intval(get_option('hrb_cancellation_hours', 24));
-        $booking_datetime = strtotime($booking->booking_date . ' ' . $booking->start_time);
-        if ($booking_datetime && time() < ($booking_datetime - $hours * 3600)) {
-            // Cancelled early enough — no fee.
-            return false;
-        }
-
+        // The fee applies to every cancellation of an unpaid cash/on-site
+        // booking, however far ahead it is cancelled — it is not tied to the
+        // cancellation window.
         $fee = self::CANCELLATION_FEE;
 
         // Record the fee on the booking.

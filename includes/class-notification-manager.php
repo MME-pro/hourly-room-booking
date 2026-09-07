@@ -108,7 +108,22 @@ class HRB_Notification_Manager {
         
         // Attach invoice for booking confirmation, payment confirmation, and invoice regeneration
         $attachments = array();
-        
+
+        // A cancelled booking that carries a fee goes out with its own invoice
+        // for that fee. Only unpaid cash/on-site bookings ever carry one, so a
+        // customer who paid by PayPal gets the plain cancellation mail.
+        if ($event === 'booking_cancelled'
+            && isset($booking->cancellation_fee)
+            && floatval($booking->cancellation_fee) > 0) {
+
+            $fee_invoice = HRB_Invoice_Generator::getInstance()
+                ->generate_cancellation_fee_invoice($booking->id);
+
+            if (!is_wp_error($fee_invoice) && file_exists($fee_invoice)) {
+                $attachments[] = $fee_invoice;
+            }
+        }
+
         if ($event === 'invoice_regenerated') {
             // For invoice regeneration, always attach the invoice
             // First check if invoice path was passed in custom_data (from regenerate_invoice)
@@ -604,15 +619,50 @@ class HRB_Notification_Manager {
         $cancellation_fee_notice = '';
         $cancellation_fee_notice_html = '';
         if ($cancellation_fee > 0) {
+            // The fee is settled by bank transfer only — never PayPal — so the
+            // notice carries the account details rather than telling the
+            // customer to pay on-site. Only bookings that were not paid online
+            // ever carry a fee (see maybe_apply_cancellation_fee), so a PayPal
+            // customer never sees this block.
+            $bank = HRB_Invoice_Generator::get_bank_details();
+
             $cancellation_fee_notice = sprintf(
                 /* translators: %s: formatted cancellation fee amount */
-                __('A cancellation fee of %s applies and is payable on-site.', 'hourly-room-booking'),
+                __('A cancellation fee of %s applies and must be transferred to our bank account. PayPal is not accepted for this fee.', 'hourly-room-booking'),
                 hrb_format_amount($cancellation_fee)
             );
+
+            $rows = '';
+            if ($bank['holder'] !== '') {
+                $rows .= '<tr><td style="padding:3px 12px 3px 0;">' . esc_html__('Account holder', 'hourly-room-booking')
+                    . '</td><td style="padding:3px 0;"><strong>' . esc_html($bank['holder']) . '</strong></td></tr>';
+            }
+            if ($bank['iban'] !== '') {
+                $rows .= '<tr><td style="padding:3px 12px 3px 0;">' . esc_html__('IBAN', 'hourly-room-booking')
+                    . '</td><td style="padding:3px 0;"><strong>' . esc_html($bank['iban']) . '</strong></td></tr>';
+            }
+            if ($bank['bic'] !== '') {
+                $rows .= '<tr><td style="padding:3px 12px 3px 0;">' . esc_html__('BIC', 'hourly-room-booking')
+                    . '</td><td style="padding:3px 0;"><strong>' . esc_html($bank['bic']) . '</strong></td></tr>';
+            }
+            $rows .= '<tr><td style="padding:3px 12px 3px 0;">' . esc_html__('Reference', 'hourly-room-booking')
+                . '</td><td style="padding:3px 0;"><strong>' . esc_html($booking->booking_reference) . '</strong></td></tr>';
+
             // Styled block for HTML email templates (only rendered when a fee applies).
             $cancellation_fee_notice_html =
-                '<div style="margin:20px 0;padding:14px 16px;background:#fdecea;border-left:4px solid #981b1e;">'
-                . '<strong style="color:#981b1e;">' . esc_html($cancellation_fee_notice) . '</strong>'
+                '<div style="margin:20px 0;padding:16px;background:#fdecea;border-left:4px solid #981b1e;">'
+                . '<div style="color:#981b1e;font-weight:bold;margin-bottom:10px;">'
+                . sprintf(
+                    /* translators: %s: formatted cancellation fee amount */
+                    esc_html__('Cancellation fee: %s', 'hourly-room-booking'),
+                    esc_html(hrb_format_amount($cancellation_fee))
+                )
+                . '</div>'
+                . '<div style="margin-bottom:10px;">' . esc_html__('Please transfer the amount to:', 'hourly-room-booking') . '</div>'
+                . '<table style="border-collapse:collapse;font-size:14px;">' . $rows . '</table>'
+                . '<div style="margin-top:12px;color:#981b1e;font-weight:bold;">'
+                . esc_html__('Payment by PayPal is not accepted for the cancellation fee.', 'hourly-room-booking')
+                . '</div>'
                 . '</div>';
         }
         $content = str_replace(

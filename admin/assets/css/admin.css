@@ -1691,6 +1691,18 @@ span.stockInfo
 }
 
 
+/* Room dropdown on the booking form: rooms that cannot take this booking at
+   the selected date and time are disabled and say why. */
+select#room_id option.hrb-room-unavailable {
+    color: #b32d2e;
+}
+
+.hrb-room-note {
+    margin-top: 6px;
+    color: #b32d2e;
+    font-weight: 600;
+}
+
 /* ==========================================================================
    HRB — calendar day view: give the time slots room for a whole booking card
    ==========================================================================

@@ -265,6 +265,24 @@ class HRB_Settings {
             'type' => 'string',
             'sanitize' => 'sanitize_text_field'
         ],
+
+        // Bank details for the cancellation-fee invoice. The fee is settled by
+        // transfer only, never PayPal.
+        'hrb_bank_account_holder' => [
+            'default' => 'Adam Czapiewski',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_iban' => [
+            'default' => 'DE37590100660861429667',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_bic' => [
+            'default' => 'PBNKDEFF',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
         'hrb_company_logo' => [
             'default' => '',
             'type' => 'string',
@@ -1141,6 +1159,9 @@ class HRB_Settings {
                     'hrb_company_phone',
                     'hrb_company_email',
                     'hrb_company_vat_id',
+                    'hrb_bank_account_holder',
+                    'hrb_bank_iban',
+                    'hrb_bank_bic',
                     'hrb_company_logo',
                     'hrb_admin_email',
                     'hrb_admin_email_notifications',

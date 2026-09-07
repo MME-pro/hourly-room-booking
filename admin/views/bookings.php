@@ -2196,6 +2196,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
+                                <p class="description hrb-room-note" id="hrb-room-availability-note" style="display:none;"></p>
                             </td>
                         </tr>
                         <tr>
@@ -3108,7 +3109,83 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     // Load time slots when date or duration changes
                     $('#booking_date, #duration').on('change', function() {
                         loadTimeSlots();
+                        refreshRoomAvailability();
                     });
+
+                    // Moving a booking to another room must respect that room's
+                    // own diary: mark every room in the dropdown as free or not
+                    // for the date and time currently selected, and stop the
+                    // taken ones being chosen. Without this the form happily
+                    // offers a room the save then rejects.
+                    function refreshRoomAvailability() {
+                        var $room = $('#room_id');
+                        var date = $('#booking_date').val();
+                        var startTime = $('#start_time').val();
+                        var endTime = $('#end_time').val();
+
+                        if (!$room.length || !date || !startTime || !endTime) {
+                            return;
+                        }
+
+                        $.ajax({
+                            url: ajaxurl,
+                            type: 'POST',
+                            data: {
+                                action: 'hrb_get_room_availability',
+                                nonce: '<?php echo wp_create_nonce('hrb_nonce'); ?>',
+                                date: date,
+                                start_time: startTime,
+                                end_time: endTime,
+                                booking_id: '<?php echo isset($booking) && is_object($booking) ? esc_js($booking->id) : ''; ?>'
+                            },
+                            success: function(response) {
+                                if (!response.success || !response.data || !response.data.rooms) {
+                                    return;
+                                }
+
+                                var selected = $room.val();
+
+                                response.data.rooms.forEach(function(room) {
+                                    var $opt = $room.find('option[value="' + room.id + '"]');
+                                    if (!$opt.length) {
+                                        return;
+                                    }
+
+                                    if (!$opt.data('base-label')) {
+                                        $opt.data('base-label', $.trim($opt.text()));
+                                    }
+
+                                    var label = $opt.data('base-label');
+                                    if (room.label) {
+                                        label += ' — ' + room.label;
+                                    }
+
+                                    $opt.text(label);
+                                    // The booking's current room stays selectable even
+                                    // when reported as taken: the clash is itself.
+                                    $opt.prop('disabled', !room.available && String(room.id) !== String(selected));
+                                    $opt.toggleClass('hrb-room-unavailable', !room.available);
+                                });
+
+                                // If the selected room just became unavailable, say so
+                                // rather than letting the admin discover it on save.
+                                var $chosen = $room.find('option:selected');
+                                var blocked = $chosen.length && $chosen.hasClass('hrb-room-unavailable');
+                                $('#hrb-room-availability-note')
+                                    .toggle(!!blocked)
+                                    .text(blocked
+                                        ? '<?php echo esc_js(__('This room is not available for the selected date and time. Pick another room or another slot.', 'hourly-room-booking')); ?>'
+                                        : '');
+                            }
+                        });
+                    }
+
+                    // Re-check whenever a different time slot is picked.
+                    $(document).on('click', '#time-slots-container .hrb-time-slot', function() {
+                        setTimeout(refreshRoomAvailability, 300);
+                    });
+
+                    refreshRoomAvailability();
 
                     // Load extras when room, date, or duration changes
                     $('#room_id, #booking_date, #duration').on('change', function() {
