@@ -1825,12 +1825,20 @@ class HRB_Database {
 
         // Bump this when a template is *added* to the bundle. Missing templates
         // are inserted; existing ones are left exactly as the team edited them.
-        $bundle_version = '2026-09-04-daily-summary';
+        $bundle_version = '2026-09-05-arrival-reminder';
+
+        // Bump this when a *single* template's own content changes. Only the
+        // keys listed are rewritten, so a design version bump - which throws
+        // away every manual edit on the site - is not needed to ship one new
+        // figure in one mail.
+        $template_version = '2026-09-07-summary-payment-split';
+        $template_keys    = array('daily_summary_admin');
 
         $resync = (get_option('hrb_email_design_version') !== $design_version);
         $add_missing = (get_option('hrb_email_bundle_version') !== $bundle_version);
+        $resync_some = (get_option('hrb_email_template_version') !== $template_version);
 
-        if (!$resync && !$add_missing) {
+        if (!$resync && !$add_missing && !$resync_some) {
             return;
         }
 
@@ -1861,7 +1869,10 @@ class HRB_Database {
             ));
 
             if ($existing_id) {
-                if (!$resync) {
+                $wanted = $resync
+                    || ($resync_some && in_array($tpl['template_key'], $template_keys, true));
+
+                if (!$wanted) {
                     continue;
                 }
 
@@ -1898,6 +1909,7 @@ class HRB_Database {
 
         update_option('hrb_email_design_version', $design_version);
         update_option('hrb_email_bundle_version', $bundle_version);
+        update_option('hrb_email_template_version', $template_version);
     }
 
     /**

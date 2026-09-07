@@ -1531,7 +1531,16 @@ class HRB_Booking_Manager {
         
         // Get bookings starting in 1 hour (expanded window: 45-75 minutes)
         // Filter out anonymous bookings and bookings without email
-        $upcoming_bookings = $wpdb->get_results(
+        //
+        // The window is built from WordPress' clock rather than MySQL's NOW():
+        // booking times are stored in the site's timezone while NOW() is the
+        // database server's, and where those differ every reminder would go out
+        // at the wrong time.
+        $now  = current_time('timestamp');
+        $from = date('Y-m-d H:i:s', $now + 45 * MINUTE_IN_SECONDS);
+        $to   = date('Y-m-d H:i:s', $now + 75 * MINUTE_IN_SECONDS);
+
+        $upcoming_bookings = $wpdb->get_results($wpdb->prepare(
             "SELECT b.*, c.email, c.phone, c.first_name, c.last_name
              FROM {$wpdb->prefix}hrb_bookings b
              LEFT JOIN {$wpdb->prefix}hrb_customers c ON b.customer_id = c.id
@@ -1539,8 +1548,10 @@ class HRB_Booking_Manager {
              AND b.is_anonymous = 0
              AND c.email IS NOT NULL
              AND c.email != ''
-             AND CONCAT(b.booking_date, ' ', b.start_time) BETWEEN NOW() + INTERVAL 45 MINUTE AND NOW() + INTERVAL 75 MINUTE"
-        );
+             AND CONCAT(b.booking_date, ' ', b.start_time) BETWEEN %s AND %s",
+            $from,
+            $to
+        ));
         
         $reminders_sent = 0;
         $reminders_skipped = 0;

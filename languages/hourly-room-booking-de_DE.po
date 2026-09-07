@@ -4099,3 +4099,15 @@ msgstr "Für diese Buchung fällt keine Stornogebühr an"
 msgid "Failed to create the cancellation fee invoice"
 msgstr "Die Stornogebühren-Rechnung konnte nicht erstellt werden"
 
+
+msgid "Not specified"
+msgstr "Nicht angegeben"
+
+msgid "This room is not available for the selected date and time. Saving will create a conflict."
+msgstr "Dieser Raum ist zum gewählten Datum und zur gewählten Zeit nicht verfügbar. Beim Speichern entsteht eine Überschneidung."
+
+msgid "In 15 minutes, %1$s is arriving for %2$s."
+msgstr "In 15 Minuten trifft %1$s für %2$s ein."
+
+msgid "In 15 minutes: %1$s – %2$s"
+msgstr "In 15 Minuten: %1$s – %2$s"

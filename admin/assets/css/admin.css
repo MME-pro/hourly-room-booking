@@ -1706,26 +1706,38 @@ select#room_id option.hrb-room-unavailable {
 /* ==========================================================================
    HRB — calendar day view: give the time slots room for a whole booking card
    ==========================================================================
-   A time grid sizes an event to its duration, so a short booking clipped its
-   own card — measured: the card needs ~102px, a two-hour booking was given 74.
-   Two hours is the plugin's minimum booking, so the slots are tall enough that
-   even the shortest booking fits a full card (customer, room, reference,
-   time + price, extras, status) with room for a wrapped line.
+   A time grid sizes an event to its duration and clips the overflow, so the
+   shortest booking decides how tall a slot has to be. The shortest is one hour
+   (hrb_default_booking_duration allows 1) = two 30-minute slots, and a full
+   card — customer, room, reference, time + price, extras, status — measured
+   125px at its tallest. 68px slots give an hour 136px, so nothing is cut; the
+   earlier 36px only ever fitted bookings of two hours or more.
    Day view only: the week grid shows seven columns and would become unusably
-   tall at this slot height. */
+   tall at this slot height. The same on a phone as on a desktop — the card
+   needs the same room either way, and the day scrolls vertically. */
 .fc-timeGridDay-view .fc-timegrid-slot {
-    height: 36px;
+    height: 68px;
 }
 
 .fc-timeGridDay-view .fc-timegrid-event .fc-event-content {
-    padding: 4px 8px;
+    padding: 3px 7px;
 }
 
 .fc-timeGridDay-view .fc-timegrid-event .fc-event-row {
     white-space: normal;
+    line-height: 1.35;
 }
 
-/* HRB — calendar on phones: defaults to list view (JS); month view scrolls sideways */
+/* Two overlapping bookings sit side by side, which in a 430px-wide day column
+   leaves each card about 200px. Every row has to wrap rather than run off. */
+.fc-timeGridDay-view .fc-timegrid-event .fc-event-row span,
+.fc-timeGridDay-view .fc-timegrid-event .fc-event-detail span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+/* HRB — calendar on phones: opens on the list view (JS); every tab then
+   shows the view it names */
 @media (max-width: 782px) {
     #hrb-calendar,
     .hrb-calendar-container { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1737,9 +1749,9 @@ select#room_id option.hrb-room-unavailable {
     .fc .fc-list-event-title .fc-event-content,
     .fc .fc-list-event-title .fc-event-row { white-space: normal; display: block; }
     .fc .fc-list-event-title .fc-event-row span { white-space: normal; }
-    /* Day and List both render list rows on a phone (the Day button switches to
-       listDay — see hrbMobileView). A list row grows with its content, so the
-       booking card is never clipped the way a time-grid event would be. */
+    /* List rows grow with their content, so a card is never clipped here the
+       way a time-grid event can be. The Day tab is a real time grid at every
+       width — it is sized for the whole card (see the day view block above). */
     .fc .fc-list-event-title .fc-event-content { padding: 2px 0; }
     .fc .fc-list-event-title .fc-event-row {
         display: flex;

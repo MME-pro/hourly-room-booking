@@ -5,6 +5,21 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-09-07
+
+### Added
+- **Arrival reminder to the team.** Fifteen minutes before a booking starts, the same addresses that receive new-booking notifications get a reminder — "In 15 Minuten trifft {Kunde} für {Raum} ein" — with the customer's phone number, the booking reference and the payment status, so whoever is on the door knows who is about to walk in. Runs on a five-minute cron against a ten-minute window, so a missed tick cannot let a booking slip through unannounced, and each booking is only ever announced once. Confirmed bookings only; anonymous blocks are skipped. A branded `arrival_reminder_admin` email template is bundled and editable on the Email Templates screen.
+- **On-site and PayPal figures in the daily summary.** The summary now splits the day's bookings and revenue by how they are paid: the headline table shows how many of the day's bookings and how much of its value came in on site and how much through PayPal, and a new "Nach Zahlungsart" table breaks every method down into bookings, value and money actually received that day. Cash counts as on-site money, which is how the plugin treats it everywhere else; anything else (a bank transfer, say) gets its own row. New template placeholders: `{onsite_bookings}`, `{onsite_revenue}`, `{onsite_received}`, the same three for `paypal` and `other`, and `{payment_method_rows}`.
+
+### Changed
+- **A room that is not available can be selected again.** Since 1.8.0 the booking form disabled rooms that were booked or closed for the chosen slot. They are selectable once more — marked red, with the reason still spelled out ("already booked", "closed at this time") and a warning under the field — because an admin may have a reason to move a booking into a taken room and sort the clash out afterwards. The choice is now deliberate rather than blocked.
+- **Updating one bundled email template no longer discards edits to the others.** Shipping a change to a single template used to require bumping the design version, which re-synced every template and overwrote anything the team had edited in the admin editor. A template can now be re-synced by name on its own.
+
+### Fixed
+- **The Day tab on a phone showed the list, not the day.** On a narrow screen the Day button quietly switched to the day *list* view, so the Day and List tabs rendered the same screen. Every tab now opens the view it names at every width, and the day grid keeps the detailed booking cards it was given in 1.7.2.
+- **A one-hour booking's card was cut off in the day view.** The time slots were sized for a two-hour booking on the assumption that two hours was the minimum, but the minimum is one hour: a one-hour card was given 72px and needed 112px. The slots are now tall enough for the shortest booking, and card rows wrap instead of running off when two bookings sit side by side. Affected desktop as well as phones.
+- **The room availability warning did not follow the room you picked.** The note under the room dropdown was only set when fresh availability arrived, so choosing an unavailable room by hand left no warning on screen. It now updates with the selection.
+- **Customer booking reminders could go out at the wrong time.** The one-hour reminder built its window from the database server's clock while booking times are stored in the site's timezone; where the two differed, reminders fired hours early or late — or never. Both reminder windows are now built from the WordPress clock.
 ## [1.8.0] - 2026-09-04
 
 ### Added

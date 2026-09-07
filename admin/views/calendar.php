@@ -1318,12 +1318,12 @@ function initializeCalendar() {
                 };
             }
 
-            // On phones, grid views show a compact pill; tap opens details.
-            // A time grid sizes an event to its duration and clips whatever does
-            // not fit, so the detailed card only works in a list view — which is
-            // what the Day button switches to on a phone (see hrbMobileView).
+            // On phones the month and week grids show a compact pill; tap opens
+            // the details. There is no room for more: a month cell is a few
+            // millimetres wide. The day grid is the exception - one column, so
+            // the full card fits and the slots are sized for it in admin.css.
             var _vt = arg.view.type;
-            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0) {
+            if (window.innerWidth <= 782 && _vt.indexOf('list') !== 0 && _vt !== 'timeGridDay') {
                 var _cn = (arg.event.extendedProps.customer_name || arg.event.title.replace(/\s*\([^)]+\)$/, '')) || '<?php echo esc_js(__('Booking', 'hourly-room-booking')); ?>';
                 var _ct = (arg.timeText || '').replace(' - ', '-');
                 return { html: '<div class="fc-event-compact">' + (_ct ? '<b>' + _ct + '</b> ' : '') + _cn + '</div>' };
@@ -1494,24 +1494,15 @@ function filterByRoom(roomId) {
     window.history.pushState({}, '', url);
 }
 
-/**
- * Map a view to the one that actually works at this width.
- *
- * On a phone the Day button opens the day *list* rather than the time grid. A
- * time grid sizes each event to its duration and clips anything that does not
- * fit, so a detailed booking card gets cut off. The list stacks full-height
- * cards that grow with their content — the same way a month cell does.
- */
-function hrbMobileView(view) {
-    return (window.innerWidth <= 782 && view === 'timeGridDay') ? 'listDay' : view;
-}
-
-// Calendar view buttons
+// Calendar view buttons. Every button opens the view it names at every width:
+// Day used to fall back to the day *list* on a phone, which made the Day and
+// List tabs render the same screen. The day grid keeps its detailed cards
+// instead - the slots are tall enough for them (see admin.css).
 document.querySelectorAll('.calendar-view-btn').forEach(btn => {
     btn.addEventListener('click', function() {
         document.querySelectorAll('.calendar-view-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
-        calendar.changeView(hrbMobileView(this.dataset.view));
+        calendar.changeView(this.dataset.view);
     });
 });
 

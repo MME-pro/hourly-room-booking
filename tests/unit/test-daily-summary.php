@@ -55,6 +55,10 @@ function hrb_format_amount($amount) { return number_format((float) $amount, 2, '
 function esc_url($url) { return (string) $url; }
 function esc_attr($text) { return htmlspecialchars((string) $text, ENT_QUOTES, 'UTF-8'); }
 function wp_strip_all_tags($text) { return trim(strip_tags((string) $text)); }
+function hrb_get_payment_method_label($method) {
+    $labels = ['paypal' => 'PayPal', 'onsite' => 'On-site Payment', 'cash' => 'Cash', 'bank_transfer' => 'Bank Transfer'];
+    return $labels[$method] ?? ucfirst(str_replace('_', ' ', $method));
+}
 
 require_once dirname(__DIR__, 2) . '/includes/class-daily-summary.php';
 
@@ -254,6 +258,15 @@ $figures = [
     'collected_count'   => 1,
     'outstanding'       => 80.00,
     'cancellation_fees' => 0.0,
+    'by_payment_method' => [
+        'onsite' => ['bookings' => 2, 'value' => 160.00, 'collected' => 120.00],
+        'paypal' => ['bookings' => 2, 'value' => 100.00, 'collected' => 0.00],
+    ],
+    'channels'          => [
+        'onsite' => ['bookings' => 2, 'value' => 160.00, 'collected' => 120.00],
+        'paypal' => ['bookings' => 2, 'value' => 100.00, 'collected' => 0.00],
+        'other'  => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+    ],
 ];
 
 $html = $summary->render_html($figures);
@@ -278,6 +291,73 @@ $subject = $summary->render_subject($figures);
 check_contains('the subject carries the date', $subject, '04.09.2026');
 check_contains('the subject carries the company', $subject, 'Bookingsuite');
 check('the subject has no placeholders left', preg_match('/\{[a-z_]+\}/', $subject), 0);
+
+// ---------------------------------------------------------------------------
+// On-site money against PayPal money
+// ---------------------------------------------------------------------------
+
+echo "\n-- payment_channel --\n";
+
+check('an on-site booking', HRB_Daily_Summary::payment_channel('onsite'), 'onsite');
+check('cash is on-site money too', HRB_Daily_Summary::payment_channel('cash'), 'onsite');
+check('PayPal is its own channel', HRB_Daily_Summary::payment_channel('paypal'), 'paypal');
+check('case does not matter', HRB_Daily_Summary::payment_channel('PayPal'), 'paypal');
+check('nor does stray whitespace', HRB_Daily_Summary::payment_channel(' onsite '), 'onsite');
+check('a bank transfer is neither', HRB_Daily_Summary::payment_channel('bank_transfer'), 'other');
+check('an empty method is neither', HRB_Daily_Summary::payment_channel(''), 'other');
+check('nor a method the plugin has never heard of', HRB_Daily_Summary::payment_channel('sofort'), 'other');
+
+echo "\n-- the split in the email --\n";
+
+check_contains('the number taken on site', $html, '<th>davon vor Ort</th><td>2</td>');
+check_contains('the number taken through PayPal', $html, '<th>davon PayPal</th><td>2</td>');
+check_contains('the money taken on site', $html, '<th>davon vor Ort</th><td>160,00 €</td>');
+check_contains('the money taken through PayPal', $html, '<th>davon PayPal</th><td>100,00 €</td>');
+check_contains('a breakdown table by method', $html, 'Nach Zahlungsart');
+check_contains('...with the on-site row', $html, '<td>On-site Payment</td><td class="num">2</td>');
+check_contains('...and the PayPal row', $html, '<td>PayPal</td><td class="num">2</td>');
+
+// The headline figures are what the team reads first, so the split has to
+// reconcile with them rather than being collected a second, different way.
+$channel_bookings = array_sum(array_column($figures['channels'], 'bookings'));
+$channel_value    = array_sum(array_column($figures['channels'], 'value'));
+
+check('the channels account for every booking', $channel_bookings, $figures['total']);
+check('the channels account for the whole value', $channel_value, (float) $figures['value']);
+
+echo "\n-- a site that has never taken a PayPal payment --\n";
+
+$cash_only = array_merge($figures, [
+    'by_payment_method' => ['cash' => ['bookings' => 3, 'value' => 90.00, 'collected' => 90.00]],
+    'channels'          => [
+        'onsite' => ['bookings' => 3, 'value' => 90.00, 'collected' => 90.00],
+        'paypal' => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+        'other'  => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+    ],
+]);
+
+$cash_html = $summary->render_html($cash_only);
+
+check_contains('PayPal still reports a zero rather than going blank', $cash_html, '<th>davon PayPal</th><td>0</td>');
+check(
+    'no empty PayPal row is invented in the breakdown table',
+    substr_count($cash_html, '<td>PayPal</td>'),
+    0
+);
+check_contains('and the cash row is there', $cash_html, '<td>Cash</td>');
+
+echo "\n-- figures a filter has trimmed --\n";
+
+// hrb_daily_summary_figures lets a site rewrite the array; a missing key must
+// not take down the one mail nobody is watching being sent.
+$trimmed = $figures;
+unset($trimmed['channels'], $trimmed['by_payment_method']);
+
+$trimmed_html = $summary->render_html($trimmed);
+
+check('the mail still renders', $trimmed_html !== '', true);
+check('with no placeholders left behind', preg_match('/\{[a-z_]+\}/', $trimmed_html), 0);
+check_contains('and the split reads zero', $trimmed_html, '<th>davon PayPal</th><td>0</td>');
 
 echo "\n-- a day with nothing created --\n";
 

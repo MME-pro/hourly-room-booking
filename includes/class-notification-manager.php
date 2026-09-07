@@ -24,12 +24,186 @@ class HRB_Notification_Manager {
         return self::$instance;
     }
     
+    /**
+     * Cron hook for the "arriving shortly" reminder to the team
+     */
+    const ARRIVAL_CRON = 'hrb_send_arrival_reminders';
+
+    /**
+     * How long before a booking starts the team is told, in minutes
+     */
+    const ARRIVAL_LEAD_MINUTES = 15;
+
     private function __construct() {
         $this->twilio_sid = get_option('hrb_twilio_sid', '');
         $this->twilio_token = get_option('hrb_twilio_token', '');
         $this->twilio_from = get_option('hrb_twilio_from', '');
         $this->whatsapp_token = get_option('hrb_whatsapp_token', '');
         $this->whatsapp_phone_id = get_option('hrb_whatsapp_phone_id', '');
+
+        add_action(self::ARRIVAL_CRON, array($this, 'send_arrival_reminders'));
+        add_action('init', array($this, 'schedule_arrival_reminders'), 20);
+    }
+
+    /**
+     * Keep the arrival-reminder cron running
+     *
+     * Every five minutes: the job looks at a ten-minute window, so a booking is
+     * always caught at least once even when WP-Cron runs late, and the
+     * notification log stops it being told twice.
+     *
+     * @since 1.9.0
+     */
+    public function schedule_arrival_reminders() {
+        if (!wp_next_scheduled(self::ARRIVAL_CRON)) {
+            wp_schedule_event(time(), 'hrb_five_minutes', self::ARRIVAL_CRON);
+        }
+    }
+
+    /**
+     * Tell the team about bookings starting shortly
+     *
+     * Goes to the same addresses that receive a new-booking notification.
+     * Anonymous bookings are skipped: they are internal blocks an admin made,
+     * not a customer turning up.
+     *
+     * @since 1.9.0
+     * @return int Number of bookings a reminder went out for
+     */
+    public function send_arrival_reminders() {
+        global $wpdb;
+
+        $lead = (int) apply_filters('hrb_arrival_reminder_lead_minutes', self::ARRIVAL_LEAD_MINUTES);
+
+        // A window rather than an exact minute: WP-Cron is traffic-driven and
+        // rarely fires on the dot. The log below keeps it to one mail each.
+        //
+        // The window is built from WordPress' clock, not MySQL's NOW(): booking
+        // times are stored in the site's timezone, while NOW() is whatever the
+        // database server is set to. On this machine those are three hours
+        // apart, which would fire every reminder at the wrong time.
+        $now  = current_time('timestamp');
+        $from = date('Y-m-d H:i:s', $now + max(0, $lead - 5) * MINUTE_IN_SECONDS);
+        $to   = date('Y-m-d H:i:s', $now + ($lead + 5) * MINUTE_IN_SECONDS);
+
+        $bookings = $wpdb->get_results($wpdb->prepare(
+            "SELECT id
+             FROM {$wpdb->prefix}hrb_bookings
+             WHERE status = 'confirmed'
+               AND is_anonymous = 0
+               AND CONCAT(booking_date, ' ', start_time) BETWEEN %s AND %s",
+            $from,
+            $to
+        ));
+
+        $sent = 0;
+
+        foreach ((array) $bookings as $row) {
+            $already = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT COUNT(*) FROM {$wpdb->prefix}hrb_notification_logs
+                 WHERE booking_id = %d AND event = 'arrival_reminder_admin' AND status IN ('sent', 'delivered')",
+                $row->id
+            ));
+
+            if ($already > 0) {
+                continue;
+            }
+
+            if ($this->send_arrival_reminder($row->id)) {
+                $sent++;
+            }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * Send one arrival reminder to the team
+     *
+     * @since 1.9.0
+     * @param int $booking_id Booking about to start
+     * @return bool Whether at least one address accepted it
+     */
+    public function send_arrival_reminder($booking_id) {
+        $booking_manager = HRB_Booking_Manager::getInstance();
+        $booking = $booking_manager->get_booking($booking_id);
+
+        if (!$booking) {
+            return false;
+        }
+
+        $recipients = HRB_Settings::getInstance()->get_notification_recipients();
+        if (empty($recipients)) {
+            return false;
+        }
+
+        $template_data = $this->prepare_arrival_reminder_data($booking);
+        if (!$template_data) {
+            return false;
+        }
+
+        $sent = false;
+        foreach ($recipients as $recipient) {
+            // send_admin_email() logs the event as "<event>_admin", which is
+            // the key send_arrival_reminders() de-duplicates on.
+            if ($this->send_admin_email($recipient, $template_data, $booking, 'arrival_reminder')) {
+                $sent = true;
+            }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * Build the arrival reminder from its branded template
+     *
+     * @since 1.9.0
+     * @param object $booking Booking row
+     * @return array|false
+     */
+    private function prepare_arrival_reminder_data($booking) {
+        global $wpdb;
+
+        $template = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}hrb_email_templates
+             WHERE template_key = %s AND template_type = 'admin' AND is_active = 1",
+            'arrival_reminder_admin'
+        ));
+
+        if ($template) {
+            return $this->prepare_admin_template_data($booking, 'arrival_reminder', $template);
+        }
+
+        // No template row (not seeded yet): send a plain but complete message
+        // rather than nothing.
+        $room = HRB_Room_Manager::getInstance()->get_room($booking->room_id);
+        $customer_name = trim($booking->first_name . ' ' . $booking->last_name);
+        $room_name = $room ? $room->name : '';
+
+        $subject = sprintf(
+            /* translators: 1: customer name, 2: room name */
+            __('In 15 minutes: %1$s – %2$s', 'hourly-room-booking'),
+            $customer_name,
+            $room_name
+        );
+
+        $body = sprintf(
+            /* translators: 1: customer name, 2: room name */
+            __('In 15 minutes, %1$s is arriving for %2$s.', 'hourly-room-booking'),
+            $customer_name,
+            $room_name
+        );
+
+        return array(
+            'subject'      => $subject,
+            'heading'      => $subject,
+            'message'      => $body,
+            'html_content' => '<p>' . esc_html($body) . '</p>'
+                . '<p>' . esc_html($booking->booking_reference) . '<br>'
+                . esc_html(date_i18n(get_option('hrb_time_format', 'H:i'), strtotime($booking->start_time)))
+                . ' – ' . esc_html(date_i18n(get_option('hrb_time_format', 'H:i'), strtotime($booking->end_time)))
+                . '</p>',
+        );
     }
     
     /**

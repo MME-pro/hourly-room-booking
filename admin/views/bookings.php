@@ -2407,6 +2407,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                     endforeach;
                                     ?>
                                 </select>
+                                <p class="description hrb-room-note" id="hrb-room-availability-note" style="display:none;"></p>
                             </td>
                         </tr>
                         <!-- Status field removed - will use default 'pending' like frontend -->
@@ -3109,83 +3110,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     // Load time slots when date or duration changes
                     $('#booking_date, #duration').on('change', function() {
                         loadTimeSlots();
-                        refreshRoomAvailability();
                     });
 
-                    // Moving a booking to another room must respect that room's
-                    // own diary: mark every room in the dropdown as free or not
-                    // for the date and time currently selected, and stop the
-                    // taken ones being chosen. Without this the form happily
-                    // offers a room the save then rejects.
-                    function refreshRoomAvailability() {
-                        var $room = $('#room_id');
-                        var date = $('#booking_date').val();
-                        var startTime = $('#start_time').val();
-                        var endTime = $('#end_time').val();
-
-                        if (!$room.length || !date || !startTime || !endTime) {
-                            return;
-                        }
-
-                        $.ajax({
-                            url: ajaxurl,
-                            type: 'POST',
-                            data: {
-                                action: 'hrb_get_room_availability',
-                                nonce: '<?php echo wp_create_nonce('hrb_nonce'); ?>',
-                                date: date,
-                                start_time: startTime,
-                                end_time: endTime,
-                                booking_id: '<?php echo isset($booking) && is_object($booking) ? esc_js($booking->id) : ''; ?>'
-                            },
-                            success: function(response) {
-                                if (!response.success || !response.data || !response.data.rooms) {
-                                    return;
-                                }
-
-                                var selected = $room.val();
-
-                                response.data.rooms.forEach(function(room) {
-                                    var $opt = $room.find('option[value="' + room.id + '"]');
-                                    if (!$opt.length) {
-                                        return;
-                                    }
-
-                                    if (!$opt.data('base-label')) {
-                                        $opt.data('base-label', $.trim($opt.text()));
-                                    }
-
-                                    var label = $opt.data('base-label');
-                                    if (room.label) {
-                                        label += ' — ' + room.label;
-                                    }
-
-                                    $opt.text(label);
-                                    // The booking's current room stays selectable even
-                                    // when reported as taken: the clash is itself.
-                                    $opt.prop('disabled', !room.available && String(room.id) !== String(selected));
-                                    $opt.toggleClass('hrb-room-unavailable', !room.available);
-                                });
-
-                                // If the selected room just became unavailable, say so
-                                // rather than letting the admin discover it on save.
-                                var $chosen = $room.find('option:selected');
-                                var blocked = $chosen.length && $chosen.hasClass('hrb-room-unavailable');
-                                $('#hrb-room-availability-note')
-                                    .toggle(!!blocked)
-                                    .text(blocked
-                                        ? '<?php echo esc_js(__('This room is not available for the selected date and time. Pick another room or another slot.', 'hourly-room-booking')); ?>'
-                                        : '');
-                            }
-                        });
-                    }
-
-                    // Re-check whenever a different time slot is picked.
-                    $(document).on('click', '#time-slots-container .hrb-time-slot', function() {
-                        setTimeout(refreshRoomAvailability, 300);
-                    });
-
-                    refreshRoomAvailability();
 
                     // Load extras when room, date, or duration changes
                     $('#room_id, #booking_date, #duration').on('change', function() {
@@ -5409,6 +5335,117 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
 
 <script>
     var ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
+
+    // Room availability in the room picker.
+    //
+    // Moving a booking to another room has to respect that room's own diary, so
+    // every room is marked free or not for the date and time currently selected
+    // and the taken ones cannot be chosen. This lives in the shared script
+    // block on purpose: it serves the edit form and the add form alike, and the
+    // per-action blocks above are not all reachable.
+    jQuery(function ($) {
+        var $room = $('#room_id');
+        var $note = $('#hrb-room-availability-note');
+
+        if (!$room.length) {
+            return;
+        }
+
+        var editingBookingId = <?php echo (isset($booking) && is_object($booking) && ($action ?? '') === 'edit') ? (int) $booking->id : 0; ?>;
+
+        function currentSlot() {
+            return {
+                date: $('#booking_date').val(),
+                // The add form keeps its times under a different id.
+                start: $('#start_time').val() || $('#add_start_time').val(),
+                end: $('#end_time').val() || $('#add_end_time').val()
+            };
+        }
+
+        function refreshRoomAvailability() {
+            var slot = currentSlot();
+
+            if (!slot.date || !slot.start || !slot.end) {
+                return;
+            }
+
+            $.ajax({
+                url: ajaxurl,
+                type: 'POST',
+                data: {
+                    action: 'hrb_get_room_availability',
+                    nonce: '<?php echo wp_create_nonce('hrb_nonce'); ?>',
+                    date: slot.date,
+                    start_time: slot.start,
+                    end_time: slot.end,
+                    booking_id: editingBookingId
+                },
+                success: function (response) {
+                    if (!response || !response.success || !response.data || !response.data.rooms) {
+                        return;
+                    }
+
+                    response.data.rooms.forEach(function (room) {
+                        var $opt = $room.find('option[value="' + room.id + '"]');
+                        if (!$opt.length) {
+                            return;
+                        }
+
+                        if (typeof $opt.data('base-label') === 'undefined') {
+                            // The option is written across several lines in the
+                            // template, so collapse the indentation out of it.
+                            $opt.data('base-label', $.trim($opt.text()).replace(/\s+/g, ' '));
+                        }
+
+                        var label = $opt.data('base-label');
+                        if (room.label) {
+                            label += ' — ' + room.label;
+                        }
+
+                        $opt.text(label);
+                        // Every room stays selectable — an admin may have a
+                        // reason to move a booking into a taken room and can
+                        // sort the clash out afterwards. The option is marked
+                        // red and the note below spells it out, so the choice
+                        // is deliberate rather than accidental.
+                        $opt.toggleClass('hrb-room-unavailable', !room.available);
+                    });
+
+                    updateRoomNote();
+                }
+            });
+        }
+
+        // The note follows whichever room is picked, so it is refreshed both
+        // when fresh availability lands and when the admin changes the
+        // selection by hand.
+        function updateRoomNote() {
+            if (!$note.length) {
+                return;
+            }
+
+            var blocked = $room.find('option:selected').hasClass('hrb-room-unavailable');
+
+            $note.toggle(blocked).text(blocked
+                ? '<?php echo esc_js(__('This room is not available for the selected date and time. Saving will create a conflict.', 'hourly-room-booking')); ?>'
+                : '');
+        }
+
+        $(document).on('change', '#room_id', updateRoomNote);
+
+        $(document).on('change', '#booking_date, #duration', function () {
+            // The time slots reload first; read the new one once it has landed.
+            setTimeout(refreshRoomAvailability, 600);
+        });
+
+        $(document).on('click', '#time-slots-container .hrb-time-slot', function () {
+            setTimeout(refreshRoomAvailability, 300);
+        });
+
+        // Mark the list up straight away for the slot the booking already has.
+        setTimeout(refreshRoomAvailability, 400);
+    });
+
     var currentBookingExtras = <?php echo json_encode($booking_extras ?? []); ?>;
     var currentBookingPayments = <?php 
         // Get all payments for this booking to calculate already-paid amounts

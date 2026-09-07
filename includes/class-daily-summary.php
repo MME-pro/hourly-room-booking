@@ -333,6 +333,33 @@ class HRB_Daily_Summary {
      * @param string $date Day to report on, Y-m-d
      * @return array
      */
+    /**
+     * Which channel a payment method belongs to
+     *
+     * Money handed over at the venue - "onsite" and "cash" - is one thing to
+     * the team; PayPal is another. The plugin already treats those two as a
+     * single group wherever it decides whether a booking is settled on
+     * arrival, so the summary splits them the same way rather than inventing
+     * a second rule. Anything else (a bank transfer, say) is reported on its
+     * own line and counted as "other".
+     *
+     * @since 1.9.0
+     * @param string $method Value of the payment_method column
+     * @return string onsite|paypal|other
+     */
+    public static function payment_channel($method) {
+        $method = strtolower(trim((string) $method));
+
+        if (in_array($method, ['onsite', 'cash'], true)) {
+            return 'onsite';
+        }
+
+        if ('paypal' === $method) {
+            return 'paypal';
+        }
+
+        return 'other';
+    }
     public function collect($date) {
         global $wpdb;
 
@@ -352,6 +379,12 @@ class HRB_Daily_Summary {
             'collected_count'   => 0,
             'outstanding'       => 0.0,
             'cancellation_fees' => 0.0,
+            'by_payment_method' => [],
+            'channels'          => [
+                'onsite' => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+                'paypal' => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+                'other'  => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
+            ],
         ];
 
         // Everything below is about the bookings *entered* on this day,
@@ -424,6 +457,70 @@ class HRB_Daily_Summary {
             ];
         }
 
+        // How the day splits between money taken at the venue and money taken
+        // through PayPal. Bookings are counted whatever their status, so the
+        // figures add up to {total_bookings}; the value only counts the ones
+        // that still stand, so it adds up to {total_revenue}.
+        $method_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT COALESCE(NULLIF(payment_method, ''), 'unknown') AS method,
+                    COUNT(*) AS bookings,
+                    COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'no_show')
+                                      THEN total_amount ELSE 0 END), 0) AS value
+             FROM {$bookings}
+             WHERE DATE(created_at) = %s
+             GROUP BY method",
+            $date
+        ));
+
+        foreach ((array) $method_rows as $row) {
+            $method = strtolower((string) $row->method);
+
+            $figures['by_payment_method'][$method] = [
+                'bookings'  => (int) $row->bookings,
+                'value'     => (float) $row->value,
+                'collected' => 0.0,
+            ];
+        }
+
+        // And the money that actually arrived on the day, by method. A booking
+        // taken last week but paid for today belongs here, not above.
+        $method_collected = $wpdb->get_results($wpdb->prepare(
+            "SELECT COALESCE(NULLIF(payment_method, ''), 'unknown') AS method,
+                    COALESCE(SUM(amount), 0) AS total
+             FROM {$payments}
+             WHERE DATE(COALESCE(processed_at, created_at)) = %s
+             AND status IN ('completed', 'paid')
+             GROUP BY method",
+            $date
+        ));
+
+        foreach ((array) $method_collected as $row) {
+            $method = strtolower((string) $row->method);
+
+            if (!isset($figures['by_payment_method'][$method])) {
+                $figures['by_payment_method'][$method] = [
+                    'bookings'  => 0,
+                    'value'     => 0.0,
+                    'collected' => 0.0,
+                ];
+            }
+
+            $figures['by_payment_method'][$method]['collected'] = (float) $row->total;
+        }
+
+        // Roll the individual methods up into the two the team cares about.
+        foreach ($figures['by_payment_method'] as $method => $totals) {
+            $channel = self::payment_channel($method);
+
+            $figures['channels'][$channel]['bookings']  += $totals['bookings'];
+            $figures['channels'][$channel]['value']     += $totals['value'];
+            $figures['channels'][$channel]['collected'] += $totals['collected'];
+        }
+
+        // Biggest earner first, so the table opens with what matters.
+        uasort($figures['by_payment_method'], function ($a, $b) {
+            return $b['value'] <=> $a['value'];
+        });
         // Money actually taken on the day, whichever booking it belonged to.
         // This one deliberately stays on the payment date rather than the
         // booking's creation date — it answers "what came in today".
@@ -583,6 +680,19 @@ class HRB_Daily_Summary {
 
         $status = $figures['by_status'];
 
+        // collect() always fills these in, but the figures pass through the
+        // hrb_daily_summary_figures filter on the way here and a site could
+        // hand back a trimmed array. Missing channels read as zero rather
+        // than blowing up the one mail nobody is watching being sent.
+        $blank    = ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0];
+        $channels = isset($figures['channels']) ? (array) $figures['channels'] : [];
+
+        foreach (['onsite', 'paypal', 'other'] as $channel) {
+            $channels[$channel] = isset($channels[$channel])
+                ? ((array) $channels[$channel] + $blank)
+                : $blank;
+        }
+
         $replacements = [
             '{summary_date}'        => date_i18n(get_option('hrb_date_format', 'd.m.Y'), strtotime($figures['date'])),
             '{total_bookings}'      => (string) $figures['total'],
@@ -597,6 +707,16 @@ class HRB_Daily_Summary {
                 . ' (' . (int) $figures['collected_count'] . ')',
             '{outstanding}'         => hrb_format_amount($figures['outstanding']),
             '{cancellation_fees}'   => hrb_format_amount($figures['cancellation_fees']),
+            '{onsite_bookings}'     => (string) $channels['onsite']['bookings'],
+            '{onsite_revenue}'      => hrb_format_amount($channels['onsite']['value']),
+            '{onsite_received}'     => hrb_format_amount($channels['onsite']['collected']),
+            '{paypal_bookings}'     => (string) $channels['paypal']['bookings'],
+            '{paypal_revenue}'      => hrb_format_amount($channels['paypal']['value']),
+            '{paypal_received}'     => hrb_format_amount($channels['paypal']['collected']),
+            '{other_bookings}'      => (string) $channels['other']['bookings'],
+            '{other_revenue}'       => hrb_format_amount($channels['other']['value']),
+            '{other_received}'      => hrb_format_amount($channels['other']['collected']),
+            '{payment_method_rows}' => $this->render_payment_method_rows($figures),
             '{payment_status_rows}' => $this->render_payment_status_rows($figures),
             '{rooms_rows}'          => $this->render_room_rows($figures),
             '{company_logo_html}'   => $logo_html,
@@ -609,6 +729,39 @@ class HRB_Daily_Summary {
         return str_replace(array_keys($replacements), array_values($replacements), $content);
     }
 
+    /**
+     * Table rows for the on-site / PayPal breakdown
+     *
+     * One row per method actually used on the day, so a site that only ever
+     * takes cash never sees an empty PayPal line.
+     *
+     * @since 1.9.0
+     * @param array $figures
+     * @return string
+     */
+    private function render_payment_method_rows(array $figures) {
+        if (empty($figures['by_payment_method'])) {
+            return '<tr><td colspan="4" class="empty">'
+                . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
+                . '</td></tr>';
+        }
+
+        $html = '';
+        foreach ($figures['by_payment_method'] as $method => $totals) {
+            $label = ('unknown' === $method)
+                ? __('Not specified', 'hourly-room-booking')
+                : hrb_get_payment_method_label($method);
+
+            $html .= '<tr>'
+                . '<td>' . esc_html($label) . '</td>'
+                . '<td class="num">' . (int) $totals['bookings'] . '</td>'
+                . '<td class="num">' . esc_html(hrb_format_amount($totals['value'])) . '</td>'
+                . '<td class="num">' . esc_html(hrb_format_amount($totals['collected'])) . '</td>'
+                . '</tr>';
+        }
+
+        return $html;
+    }
     /**
      * Table rows for the payment-status breakdown
      *
