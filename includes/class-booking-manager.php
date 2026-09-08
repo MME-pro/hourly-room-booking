@@ -1118,6 +1118,23 @@ class HRB_Booking_Manager {
      * @param int $booking_id
      * @return bool True when a fee was applied, false otherwise.
      */
+    /**
+     * Whether a cancelled booking owes the cancellation fee
+     *
+     * Settled bookings do not: the amount already taken is kept instead of
+     * being refunded, which is the penalty. Everything else - a payment left
+     * pending, one that failed, one that was never started - owes the flat fee,
+     * no matter which payment method the booking was created with.
+     *
+     * @since 1.10.0
+     * @param string $payment_status Value of the booking's payment_status column
+     * @return bool
+     */
+    public static function charges_cancellation_fee($payment_status) {
+        $settled = ['paid', 'completed'];
+
+        return !in_array(strtolower(trim((string) $payment_status)), $settled, true);
+    }
     private function maybe_apply_cancellation_fee($booking_id) {
         global $wpdb;
 
@@ -1126,15 +1143,12 @@ class HRB_Booking_Manager {
             return false;
         }
 
-        // Only cash/onsite payment methods (exclude PayPal/online).
-        $method = strtolower(trim($booking->payment_method ?? ''));
-        if (!in_array($method, ['onsite', 'cash'], true)) {
-            return false;
-        }
-
-        // No fee when the booking was already fully paid — the kept amount is the
-        // penalty (no refund); adding the flat fee on top would double-charge.
-        if (in_array(strtolower(trim($booking->payment_status ?? '')), ['completed', 'paid'], true)) {
+        // What decides the fee is whether the booking was paid for, not how it
+        // was going to be paid. Money already taken is the penalty in itself -
+        // it is not refunded - so adding a flat fee on top would charge twice.
+        // Everything still outstanding gets the fee, whether the customer meant
+        // to settle it on site or through PayPal and never did.
+        if (!self::charges_cancellation_fee($booking->payment_status ?? '')) {
             return false;
         }
 

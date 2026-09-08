@@ -283,9 +283,9 @@ class HRB_Notification_Manager {
         // Attach invoice for booking confirmation, payment confirmation, and invoice regeneration
         $attachments = array();
 
-        // A cancelled booking that carries a fee goes out with its own invoice
-        // for that fee. Only unpaid cash/on-site bookings ever carry one, so a
-        // customer who paid by PayPal gets the plain cancellation mail.
+        // A cancelled booking that owes a fee goes out with the invoice for it.
+        // Only bookings that were never paid for owe one, so a customer who has
+        // already settled gets the plain cancellation mail with nothing attached.
         if ($event === 'booking_cancelled'
             && isset($booking->cancellation_fee)
             && floatval($booking->cancellation_fee) > 0) {
@@ -295,6 +295,16 @@ class HRB_Notification_Manager {
 
             if (!is_wp_error($fee_invoice) && file_exists($fee_invoice)) {
                 $attachments[] = $fee_invoice;
+            } else {
+                // The mail still goes - the customer needs the bank details
+                // either way - but a fee demand arriving without its invoice is
+                // not something to discover from a complaint months later.
+                error_log(sprintf(
+                    'HRB: cancellation fee invoice could not be generated for booking %d (%s): %s',
+                    $booking->id,
+                    $booking->booking_reference,
+                    is_wp_error($fee_invoice) ? $fee_invoice->get_error_message() : 'file was not written'
+                ));
             }
         }
 
@@ -533,6 +543,30 @@ class HRB_Notification_Manager {
     /**
      * Prepare template data for notifications
      */
+    /**
+     * Which template a notification is rendered from
+     *
+     * A cancellation reads very differently depending on whether money is still
+     * owed. One mail says "your booking is cancelled"; the other has to carry a
+     * fee, bank details and an invoice. Trying to serve both from one template
+     * with a block that is sometimes empty made the fee mail hard to edit and
+     * easy to get wrong, so the two are separate templates and this picks
+     * between them.
+     *
+     * @since 1.10.0
+     * @param object $booking
+     * @param string $event
+     * @return string Template slug, without the _user / _admin suffix
+     */
+    public static function template_slug($booking, $event) {
+        if ('booking_cancelled' === $event
+            && isset($booking->cancellation_fee)
+            && (float) $booking->cancellation_fee > 0) {
+            return 'booking_cancelled_fee';
+        }
+
+        return $event;
+    }
     private function prepare_template_data($booking, $event, $custom_data = array()) {
         global $wpdb;
         
@@ -544,7 +578,7 @@ class HRB_Notification_Manager {
         }
         
         // Get template from database based on recipient type
-        $template_key = $event . '_user'; // Default to user template
+        $template_key = self::template_slug($booking, $event) . '_user';
         $template = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}hrb_email_templates WHERE template_key = %s AND template_type = 'user' AND is_active = 1",
             $template_key
@@ -839,12 +873,27 @@ class HRB_Notification_Manager {
                 . '</div>'
                 . '</div>';
         }
+        // The bank details go in as separate tokens as well as inside the ready
+        // made block, so the fee template can lay them out itself rather than
+        // being stuck with one opaque lump of HTML.
+        $bank_details = HRB_Invoice_Generator::get_bank_details();
+
         $content = str_replace(
-            array('{cancellation_fee}', '{cancellation_fee_notice}', '{cancellation_fee_notice_html}'),
+            array(
+                '{cancellation_fee}',
+                '{cancellation_fee_notice}',
+                '{cancellation_fee_notice_html}',
+                '{bank_holder}',
+                '{bank_iban}',
+                '{bank_bic}',
+            ),
             array(
                 $cancellation_fee > 0 ? hrb_format_amount($cancellation_fee) : '',
                 $cancellation_fee_notice,
                 $cancellation_fee_notice_html,
+                esc_html($bank_details['holder']),
+                esc_html($bank_details['iban']),
+                esc_html($bank_details['bic']),
             ),
             $content
         );
@@ -899,9 +948,17 @@ class HRB_Notification_Manager {
                 break;
                 
             case 'booking_cancelled':
-                $data['subject'] = sprintf(__('Booking Cancelled - %s', 'hourly-room-booking'), $booking->booking_reference);
-                $data['heading'] = __('Booking Cancelled', 'hourly-room-booking');
-                $data['message'] = __('Your booking has been cancelled.', 'hourly-room-booking');
+                $owes_fee = isset($booking->cancellation_fee) && (float) $booking->cancellation_fee > 0;
+
+                $data['subject'] = $owes_fee
+                    ? sprintf(__('Cancellation fee - %s', 'hourly-room-booking'), $booking->booking_reference)
+                    : sprintf(__('Booking Cancelled - %s', 'hourly-room-booking'), $booking->booking_reference);
+                $data['heading'] = $owes_fee
+                    ? __('Cancellation fee', 'hourly-room-booking')
+                    : __('Booking Cancelled', 'hourly-room-booking');
+                $data['message'] = $owes_fee
+                    ? __('Your booking has been cancelled. A cancellation fee applies; the invoice is attached.', 'hourly-room-booking')
+                    : __('Your booking has been cancelled.', 'hourly-room-booking');
                 break;
                 
             case 'booking_modified':

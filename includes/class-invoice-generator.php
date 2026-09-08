@@ -113,10 +113,18 @@ class HRB_Invoice_Generator {
      * }
      */
     public static function get_bank_details() {
+        // Read through HRB_Settings, not get_option() directly. These three
+        // settings arrived in 1.8.0, so on a site installed before that the
+        // options row only exists once the settings screen has been saved -
+        // and get_option($key, '') then returns the empty fallback rather than
+        // the declared default. That put a cancellation fee demand in front of
+        // customers with a blank IBAN, which is worse than not sending it.
+        $settings = HRB_Settings::getInstance();
+
         return [
-            'holder' => trim((string) get_option('hrb_bank_account_holder', '')),
-            'iban'   => trim((string) get_option('hrb_bank_iban', '')),
-            'bic'    => trim((string) get_option('hrb_bank_bic', '')),
+            'holder' => trim((string) $settings->get('hrb_bank_account_holder', '')),
+            'iban'   => trim((string) $settings->get('hrb_bank_iban', '')),
+            'bic'    => trim((string) $settings->get('hrb_bank_bic', '')),
         ];
     }
 

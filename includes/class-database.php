@@ -1825,14 +1825,14 @@ class HRB_Database {
 
         // Bump this when a template is *added* to the bundle. Missing templates
         // are inserted; existing ones are left exactly as the team edited them.
-        $bundle_version = '2026-09-05-arrival-reminder';
+        $bundle_version = '2026-09-08-cancellation-fee-template';
 
         // Bump this when a *single* template's own content changes. Only the
         // keys listed are rewritten, so a design version bump - which throws
         // away every manual edit on the site - is not needed to ship one new
         // figure in one mail.
-        $template_version = '2026-09-07-summary-payment-split';
-        $template_keys    = array('daily_summary_admin');
+        $template_version = '2026-09-08-cancellation-split';
+        $template_keys    = array('daily_summary_admin', 'booking_cancelled_user');
 
         $resync = (get_option('hrb_email_design_version') !== $design_version);
         $add_missing = (get_option('hrb_email_bundle_version') !== $bundle_version);

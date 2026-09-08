@@ -4111,3 +4111,15 @@ msgstr "In 15 Minuten trifft %1$s für %2$s ein."
 
 msgid "In 15 minutes: %1$s – %2$s"
 msgstr "In 15 Minuten: %1$s – %2$s"
+
+msgid "Cancellation fee - %s"
+msgstr "Stornogebühr - %s"
+
+msgid "Booking Cancelled - %s"
+msgstr "Buchung storniert - %s"
+
+msgid "Your booking has been cancelled."
+msgstr "Ihre Buchung wurde storniert."
+
+msgid "Your booking has been cancelled. A cancellation fee applies; the invoice is attached."
+msgstr "Ihre Buchung wurde storniert. Es fällt eine Stornogebühr an; die Rechnung finden Sie im Anhang."

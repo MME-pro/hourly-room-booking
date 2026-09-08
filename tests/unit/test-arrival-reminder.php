@@ -183,9 +183,20 @@ check('the subject says 15 minutes', strpos($template, 'In 15 Minuten') !== fals
 
 // Adding a template to the bundle only reaches existing sites when the bundle
 // version changes; without it the reminder would fall back to the plain text.
+// Pinning the exact version string was a mistake - the next release to add a
+// template bumped it and broke this test, which says nothing about the arrival
+// reminder. What matters is that the seeder still gates on a version at all.
+$database = file_get_contents(HRB_PLUGIN_DIR . 'includes/class-database.php');
+
 check(
-    'the template bundle version was bumped so the new template is seeded',
-    (bool) preg_match("/bundle_version = '2026-09-05-arrival-reminder'/", file_get_contents(HRB_PLUGIN_DIR . 'includes/class-database.php')),
+    'seeding is still gated on a bundle version',
+    (bool) preg_match('/\$bundle_version = \'[^\']+\';/', $database),
+    true
+);
+
+check(
+    'and the seeder compares it against what the site last ran',
+    (bool) preg_match('/get_option\(\'hrb_email_bundle_version\'\) !== \$bundle_version/', $database),
     true
 );
 

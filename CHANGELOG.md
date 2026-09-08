@@ -5,6 +5,19 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-09-08
+
+### Fixed
+- **The cancellation fee was demanded with a blank IBAN.** `HRB_Invoice_Generator::get_bank_details()` read the account holder, IBAN and BIC with `get_option($key, '')`, which returns the empty fallback on any site whose options row was never written. Those three settings only arrived in 1.8.0, so on a site installed before that — every existing site — they were empty until the settings screen happened to be saved. The mail went out asking for €15.00 and gave the customer no account to send it to. The details now come through `HRB_Settings`, which knows the declared defaults.
+- **A customer who chose PayPal and never paid cancelled for free.** The fee turned on the payment *method*: only `onsite` and `cash` bookings were charged. A PayPal booking left pending was never paid for and never charged either.
+
+### Changed
+- **The cancellation fee now turns on whether the booking was paid for, not how it was going to be paid.** A settled booking is not charged — the amount already taken is kept rather than refunded, which is the penalty in itself. Everything still outstanding owes the flat fee, whether the customer meant to settle it on site or through PayPal. `HRB_Booking_Manager::charges_cancellation_fee()` is the rule.
+- **Cancellations are two separate emails instead of one with a block that is sometimes empty.** A customer who owes nothing gets *Booking Cancelled (User)*, unchanged apart from the fee block being removed. A customer who owes the fee gets a new *Booking Cancelled with Fee (Customer)* template carrying the amount, the bank details, the reference to quote, an explicit "PayPal is not accepted for the cancellation fee", and a note that the invoice is attached. Both are editable on the Email Templates screen. The existing template is re-synced by name on update, so edits to every other template survive.
+- **Bank details reach the template as separate tokens** — `{bank_holder}`, `{bank_iban}`, `{bank_bic}` alongside `{cancellation_fee}` — so the fee mail can be laid out freely instead of being stuck with one prebuilt block. `{cancellation_fee_notice_html}` still works.
+
+### Added
+- **A failed fee invoice is now logged.** The mail still goes out — the customer needs the bank details either way — but a fee demand arriving without its PDF is written to the error log with the booking reference, rather than being discovered from a complaint months later.
 ## [1.9.1] - 2026-09-07
 
 ### Fixed
