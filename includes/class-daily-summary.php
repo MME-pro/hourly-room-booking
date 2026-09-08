@@ -1112,6 +1112,8 @@ class HRB_Daily_Summary {
 
         $cancelled = 0;
         $standing  = 0;
+        $confirmed = 0;
+        $pending   = 0;
 
         foreach ($bookings as $booking) {
             $channel = isset($tally[$booking['channel']]) ? $booking['channel'] : 'other';
@@ -1126,6 +1128,17 @@ class HRB_Daily_Summary {
 
             $tally[$channel]['standing']++;
             $standing++;
+
+            // "Still standing" and "confirmed" are not the same thing: a
+            // booking can be neither cancelled nor confirmed yet. The
+            // sentence names the confirmed ones, so they are counted
+            // separately and anything still pending is said out loud
+            // rather than quietly folded in.
+            if ('confirmed' === $booking['status'] || 'completed' === $booking['status']) {
+                $confirmed++;
+            } else {
+                $pending++;
+            }
 
             if (empty($booking['paid'])) {
                 $tally[$channel]['owed'] += (float) $booking['amount'];
@@ -1154,7 +1167,12 @@ class HRB_Daily_Summary {
 
             $last = array_pop($parts);
 
-            return implode(', ', $parts) . ' ' . esc_html__('and', 'hourly-room-booking') . ' ' . $last;
+            return sprintf(
+                /* translators: 1: all but the last item, comma separated; 2: the last item */
+                esc_html__('%1$s and %2$s', 'hourly-room-booking'),
+                implode(', ', $parts),
+                $last
+            );
         };
 
         $html = '';
@@ -1175,13 +1193,23 @@ class HRB_Daily_Summary {
 
         // --- what became of them ---------------------------------------------
         if ($cancelled > 0) {
-            $html .= $para(sprintf(
-                /* translators: 1: number cancelled, 2: breakdown, 3: number remaining */
-                esc_html__('Cancelled: %1$s (%2$s). Still standing: %3$s.', 'hourly-room-booking'),
+            $sentence = sprintf(
+                /* translators: 1: number cancelled, 2: breakdown by method, 3: number confirmed */
+                esc_html__('Cancelled: %1$s (%2$s). Confirmed: %3$s.', 'hourly-room-booking'),
                 $b((string) $cancelled),
                 $listing('cancelled'),
-                $b((string) $standing)
-            ));
+                $b((string) $confirmed)
+            );
+
+            if ($pending > 0) {
+                $sentence .= ' ' . sprintf(
+                    /* translators: %s: number of bookings neither confirmed nor cancelled */
+                    esc_html__('Still awaiting confirmation: %s.', 'hourly-room-booking'),
+                    $b((string) $pending)
+                );
+            }
+
+            $html .= $para($sentence);
         }
 
         // --- the money ---------------------------------------------------------

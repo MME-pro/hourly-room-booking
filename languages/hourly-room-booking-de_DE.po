@@ -4188,3 +4188,12 @@ msgid "On %1$s, %2$s booking was taken: %3$s."
 msgid_plural "On %1$s, %2$s bookings were taken: %3$s."
 msgstr[0] "Am %1$s ist %2$s Buchung eingegangen: %3$s."
 msgstr[1] "Am %1$s sind %2$s Buchungen eingegangen: %3$s."
+
+msgid "%1$s and %2$s"
+msgstr "%1$s und %2$s"
+
+msgid "Cancelled: %1$s (%2$s). Confirmed: %3$s."
+msgstr "Storniert: %1$s (%2$s). Bestätigt: %3$s."
+
+msgid "Still awaiting confirmation: %s."
+msgstr "Noch unbestätigt: %s."
