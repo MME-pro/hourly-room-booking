@@ -188,6 +188,41 @@ foreach (['{cancellation_fee}', '{bank_holder}', '{bank_iban}', '{bank_bic}', '{
 
 check('it refuses PayPal in so many words', strpos($fee, 'PayPal') !== false, true);
 check('and says the invoice is attached', strpos($fee, 'PDF') !== false, true);
+check('it names a deadline', strpos($fee, '{cancellation_fee_due_date}') !== false, true);
+
+// The money owed is the reason for the letter, so it comes before the record
+// of what was cancelled - a customer should not have to scroll past a booking
+// summary to find out that they owe something.
+$amount_at  = strpos($fee, '{cancellation_fee}');
+$iban_at    = strpos($fee, '{bank_iban}');
+$details_at = strpos($fee, '{room_name}');
+
+check('the amount comes before the booking details', $amount_at < $details_at, true);
+check('so do the bank details', $iban_at < $details_at, true);
+
+// The deadline in the mail has to be the one printed on the invoice, so both
+// read it from the same place.
+$invoice = file_get_contents(HRB_PLUGIN_DIR . 'includes/class-invoice-generator.php');
+
+check(
+    'the due date has one definition',
+    substr_count($invoice, "strtotime('+14 days'"),
+    1
+);
+
+check(
+    'and the invoice uses it rather than its own copy',
+    (bool) preg_match('/\$due_date\s*=\s*self::cancellation_fee_due_date\(\)/', $invoice),
+    true
+);
+
+$notifications = file_get_contents(HRB_PLUGIN_DIR . 'includes/class-notification-manager.php');
+
+check(
+    'the email fills the deadline from the same place',
+    strpos($notifications, 'HRB_Invoice_Generator::cancellation_fee_due_date()') !== false,
+    true
+);
 
 // The plain cancellation must not carry any of it any more, or a customer who
 // has already paid would be shown a fee block.

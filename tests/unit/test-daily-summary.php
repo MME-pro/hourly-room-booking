@@ -298,7 +298,9 @@ foreach ([
 
 // Inline styles rather than a <style> block for the parts that must survive:
 // Outlook and most webmail strip the head, and the mail is read on phones.
-check_contains('the figures are styled inline', $bundled['html_content'], 'style="font-size:30px');
+check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:32px');
+check_contains('it draws the split as a bar', $bundled['html_content'], '{split_bar}');
+check_contains('with a legend beside it', $bundled['html_content'], '{split_legend}');
 
 echo "\n-- render_html --\n";
 
@@ -335,7 +337,7 @@ $html = $summary->render_html($figures);
 check_contains('the date it covers', $html, '04.09.2026');
 check_contains('the number of bookings created', $html, '>4<');
 check_contains('the booking value', $html, '260,00 €');
-check_contains('the hours booked', $html, '>7<');
+check_contains('the hours booked', $html, '7 Std.');
 check_contains('payments received', $html, '120,00 €');
 check_contains('the outstanding amount', $html, '80,00 €');
 check_contains('the first room', $html, 'Room 2');
@@ -368,15 +370,72 @@ check('a bank transfer is neither', HRB_Daily_Summary::payment_channel('bank_tra
 check('an empty method is neither', HRB_Daily_Summary::payment_channel(''), 'other');
 check('nor a method the plugin has never heard of', HRB_Daily_Summary::payment_channel('sofort'), 'other');
 
+// ---------------------------------------------------------------------------
+// The colours and proportions the charts are drawn from
+// ---------------------------------------------------------------------------
+
+echo "\n-- chart colours --\n";
+
+// Colour follows the method, never its position in the table: a day where one
+// method drops out must not repaint the others.
+check('on site is always the same hue', HRB_Daily_Summary::method_color('onsite'), '#2a78d6');
+check('PayPal is always the same hue', HRB_Daily_Summary::method_color('paypal'), '#eb6834');
+check('cash has its own', HRB_Daily_Summary::method_color('cash'), '#1baf7a');
+check('case does not matter', HRB_Daily_Summary::method_color('PayPal'), '#eb6834');
+
+// A fifth method is where a categorical palette stops being readable, so
+// anything unrecognised is deliberately neutral rather than a generated hue.
+check('an unknown method is neutral', HRB_Daily_Summary::method_color('sofort'), '#9aa3ad');
+
+// Every method must be distinguishable from every other one on the page.
+$hues = array_map(
+    ['HRB_Daily_Summary', 'method_color'],
+    ['onsite', 'paypal', 'cash', 'bank_transfer']
+);
+check('no two methods share a colour', count(array_unique($hues)), 4);
+
+// Status colours are reserved and must not impersonate a method.
+$states = array_map(
+    ['HRB_Daily_Summary', 'status_color'],
+    ['confirmed', 'pending', 'cancelled']
+);
+check('no status borrows a method colour', array_intersect($states, $hues), []);
+check('confirmed reads as good', HRB_Daily_Summary::status_color('confirmed'), '#0ca30c');
+check('cancelled reads as critical', HRB_Daily_Summary::status_color('cancelled'), '#d03b3b');
+
+echo "\n-- bar proportions --\n";
+
+check('half of a total', HRB_Daily_Summary::share_of(50, 100), 50.0);
+check('all of it', HRB_Daily_Summary::share_of(100, 100), 100.0);
+check('none of it', HRB_Daily_Summary::share_of(0, 100), 0.0);
+
+// A day with no revenue must not divide by zero or draw a full bar.
+check('nothing over nothing is nothing', HRB_Daily_Summary::share_of(0, 0), 0.0);
+check('something over nothing is still nothing', HRB_Daily_Summary::share_of(40, 0), 0.0);
+
+// A refund could push a part negative; a bar cannot run backwards.
+check('a negative part clamps to zero', HRB_Daily_Summary::share_of(-10, 100), 0.0);
+check('a part larger than the whole clamps to full', HRB_Daily_Summary::share_of(150, 100), 100.0);
+
 echo "\n-- the split in the email --\n";
 
-check_contains('the number taken on site', $html, '2 vor Ort');
-check_contains('the number taken through PayPal', $html, '2 PayPal');
-check_contains('the money taken on site', $html, '160,00 € vor Ort');
-check_contains('the money taken through PayPal', $html, '100,00 € PayPal');
-check_contains('a breakdown table by method', $html, 'Zahlungsart');
-check_contains('...with the on-site row', $html, '<td>On-site Payment</td><td class="num">2</td>');
-check_contains('...and the PayPal row', $html, '<td>PayPal</td><td class="num">2</td>');
+// Assert on the figures and labels the reader sees, not on the markup around
+// them — pinning table cells is what made these break on every redesign.
+check_contains('the money taken on site', $html, '160,00 €');
+check_contains('the money taken through PayPal', $html, '100,00 €');
+check_contains('a breakdown by payment method', $html, 'Zahlungsart');
+check_contains('...naming the on-site method', $html, 'On-site Payment');
+check_contains('...and PayPal', $html, 'PayPal');
+
+// The split bar has to be drawn from the same numbers the legend prints, so
+// the shares are what gets checked rather than pixel widths.
+check_contains('on-site takes its share of the bar', $html, '62&nbsp;%');
+check_contains('and PayPal the rest', $html, '38&nbsp;%');
+
+// Every method carries its own colour, chosen by the method and not by where
+// it happens to land in the table.
+check_contains('the on-site colour is on the page', $html, HRB_Daily_Summary::method_color('onsite'));
+check_contains('so is the PayPal colour', $html, HRB_Daily_Summary::method_color('paypal'));
 
 // The headline figures are what the team reads first, so the split has to
 // reconcile with them rather than being collected a second, different way.
@@ -399,13 +458,18 @@ $cash_only = array_merge($figures, [
 
 $cash_html = $summary->render_html($cash_only);
 
-check_contains('PayPal still reports a zero rather than going blank', $cash_html, '0 PayPal');
+check_contains('a cash-only day still names the on-site channel', $cash_html, 'Vor Ort');
+// Two different things, deliberately: the legend under the split bar always
+// names both channels, so a zero PayPal day reads as "none" rather than going
+// blank, while the method table below lists only the methods actually used.
+// So PayPal appears exactly once — in the legend, not as a table row.
 check(
-    'no empty PayPal row is invented in the breakdown table',
-    substr_count($cash_html, '<td>PayPal</td>'),
-    0
+    'PayPal is named once, in the legend, and not as a table row',
+    substr_count($cash_html, '>PayPal<'),
+    1
 );
-check_contains('and the cash row is there', $cash_html, '<td>Cash</td>');
+check_contains('showing nothing came in that way', $cash_html, '0&nbsp;%');
+check_contains('and the cash row is there', $cash_html, 'Cash');
 
 echo "\n-- figures a filter has trimmed --\n";
 
@@ -418,7 +482,7 @@ $trimmed_html = $summary->render_html($trimmed);
 
 check('the mail still renders', $trimmed_html !== '', true);
 check('with no placeholders left behind', preg_match('/\{[a-z_]+\}/', $trimmed_html), 0);
-check_contains('and the split reads zero', $trimmed_html, '0 PayPal');
+check_contains('and the bar falls back to an empty track', $trimmed_html, '#eceef1');
 
 echo "\n-- a day with nothing created --\n";
 

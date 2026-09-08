@@ -112,6 +112,24 @@ class HRB_Invoice_Generator {
      *     @type string $bic
      * }
      */
+    /**
+     * When the cancellation fee is due
+     *
+     * Fourteen days, the term printed on the invoice. Shared with the email so
+     * the deadline the customer reads in the message is the same one the
+     * attached PDF states — two different dates on one demand for money is
+     * exactly the sort of thing that ends in an argument.
+     *
+     * @since 1.10.2
+     * @return string Formatted in the site's date format
+     */
+    public static function cancellation_fee_due_date() {
+        return date_i18n(
+            get_option('hrb_date_format', 'd.m.Y'),
+            strtotime('+14 days', current_time('timestamp'))
+        );
+    }
+
     public static function get_bank_details() {
         // Read through HRB_Settings, not get_option() directly. These three
         // settings arrived in 1.8.0, so on a site installed before that the
@@ -211,7 +229,7 @@ class HRB_Invoice_Generator {
 
         $date_format   = get_option('hrb_date_format', 'd.m.Y');
         $issue_date    = date_i18n($date_format, current_time('timestamp'));
-        $due_date      = date_i18n($date_format, strtotime('+14 days', current_time('timestamp')));
+        $due_date      = self::cancellation_fee_due_date();
         $booking_date  = date_i18n($date_format, strtotime($booking->booking_date));
 
         $logo_html = $logo

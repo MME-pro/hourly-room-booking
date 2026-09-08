@@ -4123,3 +4123,18 @@ msgstr "Ihre Buchung wurde storniert."
 
 msgid "Your booking has been cancelled. A cancellation fee applies; the invoice is attached."
 msgstr "Ihre Buchung wurde storniert. Es fällt eine Stornogebühr an; die Rechnung finden Sie im Anhang."
+
+msgid "On site"
+msgstr "Vor Ort"
+
+msgid "Other"
+msgstr "Sonstige"
+
+msgid "PayPal"
+msgstr "PayPal"
+
+msgid "%1$d booked · %2$s in"
+msgstr "%1$d gebucht · %2$s erhalten"
+
+msgid "%1$d bookings · %2$s h"
+msgstr "%1$d Buchungen · %2$s Std."

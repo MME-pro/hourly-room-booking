@@ -5,6 +5,18 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.2] - 2026-09-08
+
+### Changed
+- **The daily summary is a proper visual summary.** Two headline cards open it — bookings taken and revenue — followed by a stacked bar splitting the day's revenue between on-site and PayPal with a legend giving each channel's amount and share, a payment-method table with a bar per row, booking and payment status side by side with coloured markers, a highlighted payments panel, and room usage with a bar per room. Every chart is built from table cells with `bgcolor`, so there is no script and no image to be blocked; it renders in Outlook and stacks to one column on a phone. Measured at 700px, 430px and 375px: nothing overflows and the page never scrolls sideways.
+- **Chart colours are assigned by entity and validated.** Each payment method keeps its own hue whether or not the others appear, so a quiet day cannot repaint the table; a method the plugin does not recognise is deliberately neutral rather than given a generated colour. The four hues pass the colourblind-separation, lightness and chroma checks against a white surface (worst adjacent CVD ΔE 9.1). Status colours come from a reserved set that shares nothing with the method hues, and always sit beside the written status.
+- **The cancellation fee email leads with the money.** The amount, the deadline, the bank details and the "PayPal is not accepted" notice now come before the record of what was cancelled, instead of below it — a customer should not have to scroll past a booking summary to find out they owe something. The wording says plainly that the fee is outstanding, the subject line reads *Offene Stornogebühr …*, and a line asks the customer to quote the booking reference so the payment can be matched.
+
+### Added
+- **The fee email states the payment deadline.** The invoice already printed one, fourteen days out; the mail said nothing. Both now read it from `HRB_Invoice_Generator::cancellation_fee_due_date()`, so the date in the message is always the date on the attached PDF. New placeholder: `{cancellation_fee_due_date}`.
+
+### Fixed
+- `HRB_Daily_Summary::share_of()` returned an integer when a value clamped to 0 or 100, despite being documented as returning a float — `min()`/`max()` hand back whichever argument won.
 ## [1.10.1] - 2026-09-08
 
 ### Fixed

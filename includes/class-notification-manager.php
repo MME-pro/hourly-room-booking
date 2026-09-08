@@ -886,6 +886,7 @@ class HRB_Notification_Manager {
                 '{bank_holder}',
                 '{bank_iban}',
                 '{bank_bic}',
+                '{cancellation_fee_due_date}',
             ),
             array(
                 $cancellation_fee > 0 ? hrb_format_amount($cancellation_fee) : '',
@@ -894,6 +895,7 @@ class HRB_Notification_Manager {
                 esc_html($bank_details['holder']),
                 esc_html($bank_details['iban']),
                 esc_html($bank_details['bic']),
+                esc_html(HRB_Invoice_Generator::cancellation_fee_due_date()),
             ),
             $content
         );

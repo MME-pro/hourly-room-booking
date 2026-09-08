@@ -750,6 +750,8 @@ class HRB_Daily_Summary {
             '{other_revenue}'       => hrb_format_amount($channels['other']['value']),
             '{other_received}'      => hrb_format_amount($channels['other']['collected']),
             '{payment_method_rows}' => $this->render_payment_method_rows($figures),
+            '{split_bar}'           => $this->render_split_bar($figures),
+            '{split_legend}'        => $this->render_split_legend($figures),
             '{payment_status_rows}' => $this->render_payment_status_rows($figures),
             '{rooms_rows}'          => $this->render_room_rows($figures),
             '{company_logo_html}'   => $logo_html,
@@ -763,6 +765,224 @@ class HRB_Daily_Summary {
     }
 
     /**
+     * Colour for a payment method
+     *
+     * Fixed per method, never per position in the table: a quiet day that drops
+     * one method must not repaint the others. The hues are the first four slots
+     * of the validated categorical palette, in order, and anything beyond them
+     * is deliberately neutral rather than a new colour - a fifth generated hue
+     * is where a palette stops being readable.
+     *
+     * @since 1.10.2
+     * @param string $method Value of the payment_method column
+     * @return string Hex colour
+     */
+    public static function method_color($method) {
+        $colors = [
+            'onsite'        => '#2a78d6',
+            'paypal'        => '#eb6834',
+            'cash'          => '#1baf7a',
+            'bank_transfer' => '#eda100',
+        ];
+
+        $method = strtolower(trim((string) $method));
+
+        return isset($colors[$method]) ? $colors[$method] : '#9aa3ad';
+    }
+
+    /**
+     * Colour for a booking or payment status
+     *
+     * The reserved status palette, kept away from the method colours so a state
+     * never looks like a series. Every use pairs it with the written status, so
+     * the colour is never carrying the meaning on its own.
+     *
+     * @since 1.10.2
+     * @param string $status
+     * @return string Hex colour
+     */
+    public static function status_color($status) {
+        $colors = [
+            'confirmed' => '#0ca30c',
+            'completed' => '#0ca30c',
+            'paid'      => '#0ca30c',
+            'pending'   => '#fab219',
+            'no_show'   => '#ec835a',
+            'cancelled' => '#d03b3b',
+            'failed'    => '#d03b3b',
+            'refunded'  => '#9aa3ad',
+        ];
+
+        $status = strtolower(trim((string) $status));
+
+        return isset($colors[$status]) ? $colors[$status] : '#9aa3ad';
+    }
+
+    /**
+     * A share of a total, as a percentage
+     *
+     * @since 1.10.2
+     * @param float $part
+     * @param float $whole
+     * @return float 0-100
+     */
+    public static function share_of($part, $whole) {
+        $whole = (float) $whole;
+
+        if ($whole <= 0) {
+            return 0.0;
+        }
+
+        return (float) max(0, min(100, ((float) $part / $whole) * 100));
+    }
+
+    /**
+     * A single horizontal bar
+     *
+     * Built from table cells with bgcolor attributes rather than a styled div:
+     * Outlook ignores CSS backgrounds on block elements but honours a table
+     * cell, and there is no image to be blocked. A zero-width cell is dropped
+     * rather than emitted, because clients disagree about what width="0" means.
+     *
+     * @since 1.10.2
+     * @param float  $percent 0-100
+     * @param string $color   Hex fill
+     * @return string HTML
+     */
+    private function bar($percent, $color) {
+        $percent = (float) $percent;
+        $filled  = (int) round($percent);
+        $track   = '#eceef1';
+
+        $cell = function ($width, $bg, $round) {
+            return '<td' . ($width !== null ? ' width="' . $width . '%"' : '')
+                . ' bgcolor="' . $bg . '" style="background:' . $bg . ';height:10px;'
+                . 'line-height:10px;font-size:0;' . $round . '">&nbsp;</td>';
+        };
+
+        $html = '<table role="presentation" cellpadding="0" cellspacing="0" border="0"'
+              . ' width="100%" style="border-collapse:collapse;table-layout:fixed;"><tr>';
+
+        if ($filled > 0) {
+            $round = $filled >= 100 ? 'border-radius:5px;' : 'border-radius:5px 0 0 5px;';
+            $html .= $cell($filled, $color, $round);
+        }
+
+        if ($filled < 100) {
+            $round = $filled > 0 ? 'border-radius:0 5px 5px 0;' : 'border-radius:5px;';
+            $html .= $cell(null, $track, $round);
+        }
+
+        return $html . '</tr></table>';
+    }
+
+    /**
+     * The stacked bar showing how the day split between on-site and PayPal
+     *
+     * A 2px white gap separates the segments so two fills never touch, which is
+     * what makes a stacked bar readable when the colours are close in weight.
+     *
+     * @since 1.10.2
+     * @param array $figures
+     * @return string HTML
+     */
+    private function render_split_bar(array $figures) {
+        $channels = isset($figures['channels']) ? $figures['channels'] : [];
+
+        $onsite = isset($channels['onsite']['value']) ? (float) $channels['onsite']['value'] : 0.0;
+        $paypal = isset($channels['paypal']['value']) ? (float) $channels['paypal']['value'] : 0.0;
+        $other  = isset($channels['other']['value']) ? (float) $channels['other']['value'] : 0.0;
+
+        $total = $onsite + $paypal + $other;
+
+        if ($total <= 0) {
+            return '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"'
+                 . ' style="border-collapse:collapse;"><tr>'
+                 . '<td bgcolor="#eceef1" style="background:#eceef1;height:12px;line-height:12px;'
+                 . 'font-size:0;border-radius:6px;">&nbsp;</td></tr></table>';
+        }
+
+        $segments = [
+            ['value' => $onsite, 'color' => self::method_color('onsite')],
+            ['value' => $paypal, 'color' => self::method_color('paypal')],
+            ['value' => $other,  'color' => '#9aa3ad'],
+        ];
+
+        $cells = [];
+        foreach ($segments as $segment) {
+            $percent = (int) round(self::share_of($segment['value'], $total));
+            if ($percent <= 0) {
+                continue;
+            }
+            $cells[] = '<td width="' . $percent . '%" bgcolor="' . $segment['color']
+                . '" style="background:' . $segment['color'] . ';height:12px;line-height:12px;'
+                . 'font-size:0;">&nbsp;</td>';
+        }
+
+        $html = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"'
+              . ' style="border-collapse:collapse;table-layout:fixed;border-radius:6px;overflow:hidden;"><tr>';
+
+        $html .= implode(
+            '<td width="1%" bgcolor="#ffffff" style="background:#ffffff;height:12px;line-height:12px;font-size:0;">&nbsp;</td>',
+            $cells
+        );
+
+        return $html . '</tr></table>';
+    }
+
+    /**
+     * The legend under the split bar
+     *
+     * Name, amount and share on one line per channel. The written name is what
+     * identifies the channel; the colour chip only repeats it.
+     *
+     * @since 1.10.2
+     * @param array $figures
+     * @return string HTML
+     */
+    private function render_split_legend(array $figures) {
+        $channels = isset($figures['channels']) ? $figures['channels'] : [];
+
+        $rows = [
+            ['key' => 'onsite', 'label' => __('On site', 'hourly-room-booking'), 'color' => self::method_color('onsite')],
+            ['key' => 'paypal', 'label' => __('PayPal', 'hourly-room-booking'),  'color' => self::method_color('paypal')],
+            ['key' => 'other',  'label' => __('Other', 'hourly-room-booking'),   'color' => '#9aa3ad'],
+        ];
+
+        $total = 0.0;
+        foreach ($rows as $row) {
+            $total += isset($channels[$row['key']]['value']) ? (float) $channels[$row['key']]['value'] : 0.0;
+        }
+
+        $html = '';
+        foreach ($rows as $row) {
+            $value = isset($channels[$row['key']]['value']) ? (float) $channels[$row['key']]['value'] : 0.0;
+
+            // "Other" only earns a line when there is something in it.
+            if ('other' === $row['key'] && $value <= 0) {
+                continue;
+            }
+
+            $share = (int) round(self::share_of($value, $total));
+
+            $html .= '<tr>'
+                . '<td style="padding:7px 0;font-size:14px;color:#1f2328;white-space:nowrap;">'
+                . '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;'
+                . 'background:' . $row['color'] . ';margin-right:8px;"></span>'
+                . esc_html($row['label'])
+                . '</td>'
+                . '<td align="right" style="padding:7px 0;font-size:14px;color:#1f2328;font-weight:600;white-space:nowrap;">'
+                . esc_html(hrb_format_amount($value))
+                . '</td>'
+                . '<td align="right" width="56" style="padding:7px 0;font-size:13px;color:#6b7280;white-space:nowrap;">'
+                . $share . '&nbsp;%'
+                . '</td>'
+                . '</tr>';
+        }
+
+        return $html;
+    }
+    /**
      * Table rows for the on-site / PayPal breakdown
      *
      * One row per method actually used on the day, so a site that only ever
@@ -774,9 +994,17 @@ class HRB_Daily_Summary {
      */
     private function render_payment_method_rows(array $figures) {
         if (empty($figures['by_payment_method'])) {
-            return '<tr><td colspan="4" class="empty">'
+            return '<tr><td colspan="3" style="padding:14px 0;color:#6b7280;font-style:italic;font-size:14px;">'
                 . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
                 . '</td></tr>';
+        }
+
+        // Bars are drawn against the largest method, not the total, so the
+        // biggest one fills the row and the rest are read against it. Against
+        // the total, a day split four ways would be four short stubs.
+        $peak = 0.0;
+        foreach ($figures['by_payment_method'] as $totals) {
+            $peak = max($peak, (float) $totals['value']);
         }
 
         $html = '';
@@ -785,11 +1013,30 @@ class HRB_Daily_Summary {
                 ? __('Not specified', 'hourly-room-booking')
                 : hrb_get_payment_method_label($method);
 
+            $color = self::method_color($method);
+
             $html .= '<tr>'
-                . '<td>' . esc_html($label) . '</td>'
-                . '<td class="num">' . (int) $totals['bookings'] . '</td>'
-                . '<td class="num">' . esc_html(hrb_format_amount($totals['value'])) . '</td>'
-                . '<td class="num">' . esc_html(hrb_format_amount($totals['collected'])) . '</td>'
+                . '<td style="padding:12px 12px 12px 0;border-bottom:1px solid #eceef1;font-size:14px;'
+                . 'color:#1f2328;white-space:nowrap;">'
+                . '<span style="display:inline-block;width:10px;height:10px;border-radius:2px;'
+                . 'background:' . $color . ';margin-right:8px;"></span>'
+                . esc_html($label)
+                . '</td>'
+                . '<td style="padding:12px 12px;border-bottom:1px solid #eceef1;width:34%;">'
+                . $this->bar(self::share_of($totals['value'], $peak), $color)
+                . '</td>'
+                . '<td align="right" style="padding:12px 0 12px 12px;border-bottom:1px solid #eceef1;'
+                . 'font-size:14px;color:#1f2328;font-weight:600;white-space:nowrap;">'
+                . esc_html(hrb_format_amount($totals['value']))
+                . '<div style="font-weight:400;font-size:12px;color:#6b7280;padding-top:2px;">'
+                . sprintf(
+                    /* translators: 1: number of bookings, 2: amount received */
+                    esc_html__('%1$d booked · %2$s in', 'hourly-room-booking'),
+                    (int) $totals['bookings'],
+                    esc_html(hrb_format_amount($totals['collected']))
+                )
+                . '</div>'
+                . '</td>'
                 . '</tr>';
         }
 
@@ -812,7 +1059,7 @@ class HRB_Daily_Summary {
         ];
 
         if (empty($figures['by_payment_status'])) {
-            return '<tr><td colspan="2" class="empty">'
+            return '<tr><td colspan="3" style="padding:14px 0;color:#6b7280;font-style:italic;font-size:14px;">'
                 . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
                 . '</td></tr>';
         }
@@ -820,9 +1067,19 @@ class HRB_Daily_Summary {
         $html = '';
         foreach ($figures['by_payment_status'] as $status => $count) {
             $label = isset($labels[$status]) ? $labels[$status] : ucfirst(str_replace('_', ' ', $status));
+            $color = self::status_color($status);
 
-            $html .= '<tr><td>' . esc_html($label) . '</td>'
-                . '<td class="num">' . (int) $count . '</td></tr>';
+            // The written status is what carries the meaning; the colour only
+            // repeats it, which is the rule for a reserved status palette.
+            $html .= '<tr>'
+                . '<td style="padding:10px 0;border-bottom:1px solid #eceef1;font-size:14px;color:#1f2328;">'
+                . '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;'
+                . 'background:' . $color . ';margin-right:8px;"></span>'
+                . esc_html($label)
+                . '</td>'
+                . '<td align="right" style="padding:10px 0;border-bottom:1px solid #eceef1;'
+                . 'font-size:14px;color:#1f2328;font-weight:600;">' . (int) $count . '</td>'
+                . '</tr>';
         }
 
         return $html;
@@ -836,18 +1093,39 @@ class HRB_Daily_Summary {
      */
     private function render_room_rows(array $figures) {
         if (empty($figures['rooms'])) {
-            return '<tr><td colspan="4" class="empty">'
+            return '<tr><td colspan="3" style="padding:14px 0;color:#6b7280;font-style:italic;font-size:14px;">'
                 . esc_html__('No bookings were created on this day.', 'hourly-room-booking')
                 . '</td></tr>';
+        }
+
+        // One hue for magnitude: the rooms are not different kinds of thing,
+        // they are the same measure at different sizes, so this is a sequential
+        // encoding rather than a categorical one.
+        $peak = 0.0;
+        foreach ($figures['rooms'] as $room) {
+            $peak = max($peak, (float) $room['value']);
         }
 
         $html = '';
         foreach ($figures['rooms'] as $room) {
             $html .= '<tr>'
-                . '<td>' . esc_html($room['name']) . '</td>'
-                . '<td class="num">' . (int) $room['bookings'] . '</td>'
-                . '<td class="num">' . esc_html($this->format_hours($room['hours'])) . '</td>'
-                . '<td class="num">' . esc_html(hrb_format_amount($room['value'])) . '</td>'
+                . '<td style="padding:12px 12px 12px 0;border-bottom:1px solid #eceef1;font-size:14px;'
+                . 'color:#1f2328;">' . esc_html($room['name'])
+                . '<div style="font-size:12px;color:#6b7280;padding-top:2px;">'
+                . sprintf(
+                    /* translators: 1: number of bookings, 2: hours booked */
+                    esc_html__('%1$d bookings · %2$s h', 'hourly-room-booking'),
+                    (int) $room['bookings'],
+                    esc_html($this->format_hours($room['hours']))
+                )
+                . '</div></td>'
+                . '<td style="padding:12px 12px;border-bottom:1px solid #eceef1;width:34%;">'
+                . $this->bar(self::share_of($room['value'], $peak), '#2a78d6')
+                . '</td>'
+                . '<td align="right" style="padding:12px 0 12px 12px;border-bottom:1px solid #eceef1;'
+                . 'font-size:14px;color:#1f2328;font-weight:600;white-space:nowrap;">'
+                . esc_html(hrb_format_amount($room['value']))
+                . '</td>'
                 . '</tr>';
         }
 
