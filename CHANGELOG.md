@@ -5,6 +5,14 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.4] - 2026-09-09
+
+### Added
+- **The daily summary ends with the day in words, and names who still owes money.** Below the figures it now reads "Am 09.09.2026 sind 6 Buchungen eingegangen. Davon haben 3 bereits bezahlt. 3 zahlen vor Ort, insgesamt 295,00 €:" followed by one line per unpaid booking — customer, room, time, reference and amount. Customers who have already paid are counted but not listed: the list is there to be worked through at the desk. Cancelled and no-show bookings are left out of both. New placeholders: `{day_narrative}` and `{unpaid_booking_rows}`.
+
+### Changed
+- **Card titles are a single word each** — Buchungen, Zahlungseingang, Stornogebühren, Offen — with the explanatory line kept underneath so the shorter titles do not lose their meaning.
+- **The per-payment-method table and the per-room table were removed** from the bundled summary. `{payment_method_rows}` and `{rooms_rows}` still work for any template that kept them.
 ## [1.10.3] - 2026-09-08
 
 ### Changed

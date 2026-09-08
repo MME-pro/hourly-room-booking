@@ -4138,3 +4138,21 @@ msgstr "%1$d gebucht · %2$s erhalten"
 
 msgid "%1$d bookings · %2$s h"
 msgstr "%1$d Buchungen · %2$s Std."
+
+msgid "Guest"
+msgstr "Gast"
+
+msgid "On %1$s, %2$s bookings were taken."
+msgstr "Am %1$s sind %2$s Buchungen eingegangen."
+
+msgid "%s of them have already paid."
+msgstr "Davon haben %s bereits bezahlt."
+
+msgid "%1$s pay on site, %2$s in total:"
+msgstr "%1$s zahlen vor Ort, insgesamt %2$s:"
+
+msgid "No bookings were taken on %s."
+msgstr "Am %s sind keine Buchungen eingegangen."
+
+msgid "Everything taken today is already paid for."
+msgstr "Alle heutigen Buchungen sind bereits bezahlt."

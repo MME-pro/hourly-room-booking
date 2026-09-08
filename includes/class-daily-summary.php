@@ -414,6 +414,7 @@ class HRB_Daily_Summary {
             'outstanding_bookings'      => 0.0,
             'pending_cancellation_fees' => 0.0,
             'cancellation_fees' => 0.0,
+            'bookings'          => [],
             'by_payment_method' => [],
             'channels'          => [
                 'onsite' => ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0],
@@ -556,6 +557,46 @@ class HRB_Daily_Summary {
         uasort($figures['by_payment_method'], function ($a, $b) {
             return $b['value'] <=> $a['value'];
         });
+        // The bookings themselves, so the summary can name them rather than
+        // only counting them. Cancelled and no-show bookings are left out: the
+        // list answers "who is coming and who still owes money", and neither
+        // does. A booking's own first_name/last_name wins over the customer
+        // record, because that is what an admin typed on the booking.
+        $booking_rows = $wpdb->get_results($wpdb->prepare(
+            "SELECT b.id, b.booking_reference, b.start_time, b.end_time, b.total_amount,
+                    b.payment_method, b.payment_status, b.is_anonymous,
+                    COALESCE(NULLIF(TRIM(CONCAT(COALESCE(b.first_name,''), ' ', COALESCE(b.last_name,''))), ''),
+                             NULLIF(TRIM(CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,''))), ''),
+                             '') AS customer_name,
+                    r.name AS room_name
+             FROM {$bookings} b
+             LEFT JOIN {$wpdb->prefix}hrb_customers c ON b.customer_id = c.id
+             LEFT JOIN {$rooms} r ON b.room_id = r.id
+             WHERE DATE(b.created_at) = %s AND b.status NOT IN ('cancelled', 'no_show')
+             ORDER BY b.start_time ASC, b.id ASC",
+            $date
+        ));
+
+        $settled = ['paid', 'completed'];
+
+        foreach ((array) $booking_rows as $row) {
+            $method = strtolower(trim((string) $row->payment_method));
+            $paid   = in_array(strtolower(trim((string) $row->payment_status)), $settled, true);
+
+            $figures['bookings'][] = [
+                'reference' => (string) $row->booking_reference,
+                'customer'  => (int) $row->is_anonymous === 1
+                    ? __('Anonymous', 'hourly-room-booking')
+                    : ((string) $row->customer_name !== '' ? (string) $row->customer_name : __('Guest', 'hourly-room-booking')),
+                'room'      => (string) $row->room_name,
+                'start'     => substr((string) $row->start_time, 0, 5),
+                'end'       => substr((string) $row->end_time, 0, 5),
+                'amount'    => (float) $row->total_amount,
+                'method'    => $method,
+                'channel'   => self::payment_channel($method),
+                'paid'      => $paid,
+            ];
+        }
         // Money actually taken on the day, whichever booking it belonged to.
         // This one deliberately stays on the payment date rather than the
         // booking's creation date — it answers "what came in today".
@@ -787,6 +828,8 @@ class HRB_Daily_Summary {
             '{other_revenue}'       => hrb_format_amount($channels['other']['value']),
             '{other_received}'      => hrb_format_amount($channels['other']['collected']),
             '{payment_method_rows}' => $this->render_payment_method_rows($figures),
+            '{day_narrative}'       => $this->render_narrative($figures),
+            '{unpaid_booking_rows}' => $this->render_unpaid_rows($figures),
             '{split_bar}'           => $this->render_split_bar($figures),
             '{split_legend}'        => $this->render_split_legend($figures),
             '{payment_status_rows}' => $this->render_payment_status_rows($figures),
@@ -1013,6 +1056,132 @@ class HRB_Daily_Summary {
                 . '</td>'
                 . '<td align="right" width="56" style="padding:7px 0;font-size:13px;color:#6b7280;white-space:nowrap;">'
                 . $share . '&nbsp;%'
+                . '</td>'
+                . '</tr>';
+        }
+
+        return $html;
+    }
+    /**
+     * The day in sentences
+     *
+     * Counts on their own do not tell whoever opens the door in the morning
+     * what to expect. This says how many bookings came in, how many are
+     * already settled, and how many still owe money when they arrive.
+     *
+     * @since 1.10.4
+     * @param array $figures
+     * @return string HTML
+     */
+    private function render_narrative(array $figures) {
+        $bookings = isset($figures['bookings']) ? (array) $figures['bookings'] : [];
+        $date     = date_i18n(get_option('hrb_date_format', 'd.m.Y'), strtotime($figures['date']));
+
+        $muted = '#6b7280';
+        $ink   = '#1f2328';
+
+        if (empty($bookings)) {
+            return '<p style="margin:0;font-size:15px;line-height:1.7;color:' . $muted . ';">'
+                 . sprintf(
+                     /* translators: %s: the date the summary covers */
+                     esc_html__('No bookings were taken on %s.', 'hourly-room-booking'),
+                     '<strong style="color:' . $ink . ';">' . esc_html($date) . '</strong>'
+                 )
+                 . '</p>';
+        }
+
+        $paid    = [];
+        $to_pay  = [];
+        $owed    = 0.0;
+
+        foreach ($bookings as $booking) {
+            if (!empty($booking['paid'])) {
+                $paid[] = $booking;
+                continue;
+            }
+
+            $to_pay[] = $booking;
+            $owed    += (float) $booking['amount'];
+        }
+
+        $line = function ($text) use ($muted) {
+            return '<p style="margin:0 0 10px 0;font-size:15px;line-height:1.7;color:' . $muted . ';">'
+                 . $text . '</p>';
+        };
+
+        $strong = function ($text) use ($ink) {
+            return '<strong style="color:' . $ink . ';">' . esc_html($text) . '</strong>';
+        };
+
+        $html = $line(sprintf(
+            /* translators: 1: date, 2: number of bookings */
+            esc_html__('On %1$s, %2$s bookings were taken.', 'hourly-room-booking'),
+            $strong($date),
+            $strong((string) count($bookings))
+        ));
+
+        if ($paid) {
+            $html .= $line(sprintf(
+                /* translators: %s: number of customers who have already paid */
+                esc_html__('%s of them have already paid.', 'hourly-room-booking'),
+                $strong((string) count($paid))
+            ));
+        }
+
+        if ($to_pay) {
+            $html .= $line(sprintf(
+                /* translators: 1: number of customers, 2: total amount still owed */
+                esc_html__('%1$s pay on site, %2$s in total:', 'hourly-room-booking'),
+                $strong((string) count($to_pay)),
+                $strong(hrb_format_amount($owed))
+            ));
+        }
+
+        return $html;
+    }
+
+    /**
+     * One line per booking that is still to be paid for
+     *
+     * These are the ones the desk has to collect money from, so the amount is
+     * the point of the row and the rest is there to recognise the booking by.
+     *
+     * @since 1.10.4
+     * @param array $figures
+     * @return string HTML table rows
+     */
+    private function render_unpaid_rows(array $figures) {
+        $bookings = isset($figures['bookings']) ? (array) $figures['bookings'] : [];
+
+        $rows = [];
+        foreach ($bookings as $booking) {
+            if (empty($booking['paid'])) {
+                $rows[] = $booking;
+            }
+        }
+
+        if (empty($rows)) {
+            return '<tr><td style="padding:14px 0;color:#6b7280;font-style:italic;font-size:14px;">'
+                 . esc_html__('Everything taken today is already paid for.', 'hourly-room-booking')
+                 . '</td></tr>';
+        }
+
+        $html = '';
+        foreach ($rows as $booking) {
+            $where = trim(implode(' · ', array_filter([
+                $booking['room'],
+                ('' !== $booking['start'] ? $booking['start'] . '–' . $booking['end'] : ''),
+                $booking['reference'],
+            ])));
+
+            $html .= '<tr>'
+                . '<td style="padding:11px 12px 11px 0;border-bottom:1px solid #eceef1;font-size:14px;color:#1f2328;">'
+                . esc_html($booking['customer'])
+                . '<div style="font-size:12px;color:#6b7280;padding-top:2px;">' . esc_html($where) . '</div>'
+                . '</td>'
+                . '<td align="right" style="padding:11px 0;border-bottom:1px solid #eceef1;font-size:15px;'
+                . 'font-weight:700;color:#1f2328;white-space:nowrap;">'
+                . esc_html(hrb_format_amount($booking['amount']))
                 . '</td>'
                 . '</tr>';
         }

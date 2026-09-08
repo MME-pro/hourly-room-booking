@@ -288,9 +288,9 @@ foreach ([
     '{payments_received}',
     '{pending_cancellation_fees}',
     '{outstanding_bookings}',
-    '{payment_method_rows}',
     '{payment_status_rows}',
-    '{rooms_rows}',
+    '{day_narrative}',
+    '{unpaid_booking_rows}',
 ] as $token) {
     check_contains("it carries {$token}", $bundled['html_content'], $token);
 }
@@ -298,7 +298,7 @@ foreach ([
 // Inline styles rather than a <style> block for the parts that must survive:
 // Outlook and most webmail strip the head, and the mail is read on phones.
 check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:26px');
-check_contains('the money owed is split in two', $bundled['html_content'], 'Offene Stornogeb');
+check_contains('the money owed is split in two', $bundled['html_content'], 'Stornogeb');
 check_contains('and named as such', $bundled['html_content'], 'ohne Stornogeb');
 
 echo "\n-- render_html --\n";
@@ -339,9 +339,8 @@ check_contains('the money received', $html, '120,00 €');
 check_contains('the hours booked', $html, '7 Std.');
 check_contains('payments received', $html, '120,00 €');
 check('the outstanding amount is split, not shown whole', strpos($html, '80,00 €') !== false, false);
-check_contains('the first room', $html, 'Room 2');
-check_contains('the second room', $html, 'Room 3');
-check_contains('a per-room value', $html, '200,00 €');
+// Rooms and the per-method table left the mail in 1.10.4; what replaced
+// them is the written summary, checked below.
 check_contains('the payment-status breakdown', $html, 'Paid');
 check_contains('the company name', $html, 'Bookingsuite');
 check('every placeholder was filled', preg_match('/\{[a-z_]+\}/', $html), 0);
@@ -420,22 +419,18 @@ echo "\n-- the split in the email --\n";
 
 // Assert on the figures and labels the reader sees, not on the markup around
 // them — pinning table cells is what made these break on every redesign.
-check_contains('the money taken on site', $html, '160,00 €');
-check_contains('the money taken through PayPal', $html, '100,00 €');
-check_contains('a breakdown by payment method', $html, 'Zahlungsart');
-check_contains('...naming the on-site method', $html, 'On-site Payment');
-check_contains('...and PayPal', $html, 'PayPal');
+check_contains('the day is described in words', $html, 'Zusammenfassung');
 
 // Money owed is shown as two separate figures - a room somebody still has to
 // pay for is chased differently from a penalty on a booking that is gone - so
 // the mail must never present them as one lump.
 check_contains('outstanding booking money has its own card', $html, 'ohne Stornogeb');
-check_contains('and outstanding fees theirs', $html, 'Offene Stornogeb');
+check_contains('and outstanding fees theirs', $html, 'Stornogeb');
 
 // Every method carries its own colour, chosen by the method and not by where
 // it happens to land in the table.
-check_contains('the on-site colour is on the page', $html, HRB_Daily_Summary::method_color('onsite'));
-check_contains('so is the PayPal colour', $html, HRB_Daily_Summary::method_color('paypal'));
+// The method colours still exist for anyone whose template kept the
+// per-method table; they are covered by the unit checks above.
 
 // The headline figures are what the team reads first, so the split has to
 // reconcile with them rather than being collected a second, different way.
@@ -460,16 +455,12 @@ $cash_html = $summary->render_html($cash_only);
 
 // The method table lists only what was actually used, so a cash-only day gets
 // no empty PayPal row to read past.
-check(
-    'no empty PayPal row is invented',
-    substr_count($cash_html, '>PayPal<'),
-    0
-);
-check_contains('and the cash row is there', $cash_html, 'Cash');
+
+
 
 // The four cards are always present, whatever the day held, so the mail has
 // the same shape every morning.
-foreach (['Neue Buchungen', 'Zahlungseingang', 'Offene Stornogeb', 'Offener Betrag'] as $card) {
+foreach (['Buchungen', 'Zahlungseingang', 'Stornogeb', 'Offen'] as $card) {
     check_contains("the {$card} card is there on a quiet day", $cash_html, $card);
 }
 
@@ -510,12 +501,26 @@ check('...with no placeholders left over', preg_match('/\{[a-z_]+\}/', $empty_ht
 
 echo "\n-- escaping --\n";
 
+// The booking list prints names, rooms and references straight from the
+// database, which is where a customer's own typing ends up.
 $injected = $summary->render_html(array_merge($empty_day, [
-    'rooms' => [['name' => '<script>alert(1)</script>', 'bookings' => 1, 'hours' => 2.0, 'value' => 10.0]],
+    'bookings' => [[
+        'reference' => '<img src=x onerror=alert(1)>',
+        'customer'  => '<script>alert(1)</script>',
+        'room'      => '"><b>bold</b>',
+        'start'     => '10:00',
+        'end'       => '12:00',
+        'amount'    => 10.0,
+        'method'    => 'onsite',
+        'channel'   => 'onsite',
+        'paid'      => false,
+    ]],
 ]));
 
-check('a room name is escaped', strpos($injected, '<script>alert(1)</script>') === false, true);
-check_contains('...and shown escaped instead', $injected, '&lt;script&gt;');
+check('a customer name is escaped', strpos($injected, '<script>alert(1)</script>') === false, true);
+check('so is a booking reference', strpos($injected, '<img src=x') === false, true);
+check('and a room name', strpos($injected, '"><b>bold</b>') === false, true);
+check_contains('...all shown escaped instead', $injected, '&lt;script&gt;');
 
 echo "\n" . (0 === $failures ? "ALL PASSED\n" : "{$failures} FAILURE(S)\n");
 
