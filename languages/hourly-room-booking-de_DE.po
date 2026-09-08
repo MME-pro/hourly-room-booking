@@ -4197,3 +4197,26 @@ msgstr "Storniert: %1$s (%2$s). Bestätigt: %3$s."
 
 msgid "Still awaiting confirmation: %s."
 msgstr "Noch unbestätigt: %s."
+
+msgid "There are no appointments on %s."
+msgstr "Am %s stehen keine Termine an."
+
+msgid "There is %1$s appointment on %2$s, worth %3$s in total."
+msgid_plural "There are %1$s appointments on %2$s, worth %3$s in total."
+msgstr[0] "Am %2$s steht %1$s Termin an, im Wert von insgesamt %3$s."
+msgstr[1] "Am %2$s stehen %1$s Termine an, im Wert von insgesamt %3$s."
+
+msgid "%1$s appointment has already been paid via %2$s: %3$s."
+msgid_plural "%1$s appointments have already been paid via %2$s: %3$s."
+msgstr[0] "%1$s Termin wurde bereits über %2$s bezahlt: %3$s."
+msgstr[1] "%1$s Termine wurden bereits über %2$s bezahlt: %3$s."
+
+msgid "%1$s appointment is paying %2$s: %3$s."
+msgid_plural "%1$s appointments are paying %2$s: %3$s."
+msgstr[0] "%1$s Termin zahlt %2$s: %3$s."
+msgstr[1] "%1$s Termine zahlen %2$s: %3$s."
+
+msgid "%1$s appointment for this day was cancelled (%2$s)."
+msgid_plural "%1$s appointments for this day were cancelled (%2$s)."
+msgstr[0] "%1$s Termin an diesem Tag wurde storniert (%2$s)."
+msgstr[1] "%1$s Termine an diesem Tag wurden storniert (%2$s)."

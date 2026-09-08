@@ -5,6 +5,15 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-09-10
+
+### Changed
+- **The daily summary reports the day's appointments, not the day's intake.** Every figure in it used to count bookings by the day they were *entered* — so a booking taken this morning for three weeks' time was in today's mail, and the appointments actually happening today were not. All twelve queries now key on `booking_date`: how many appointments there are, what they are worth, what has been received for them, what is still owed, the per-room and per-method breakdowns, and the cancellation fees. The mail describes one day's diary and nothing else.
+- **The written summary follows the same shape.** "Am 11.09.2026 stehen 10 Termine an, im Wert von insgesamt 1.000,00 €. 3 Termine wurden bereits über PayPal bezahlt: 300,00 €. 7 Termine zahlen vor Ort: 700,00 €." Anything cancelled for that date is reported on its own line with its value, and the list of who still has to pay follows underneath.
+- **Wording throughout was corrected to match**: the first card is *Termine* rather than *Buchungen*, the section heading is *Terminübersicht*, the subject reads "Termine am {summary_date}", and the card sub-labels say "für diese Termine" instead of "heute".
+
+### Note
+- **The send time now decides which day you get.** The summary covers the day that ended at the configured send time, so at 00:00 it reports yesterday's appointments and at 06:00 it reports today's. If the mail is meant as a morning briefing — who is coming and who still owes money — set the send time to a morning hour rather than midnight.
 ## [1.10.6] - 2026-09-09
 
 ### Fixed

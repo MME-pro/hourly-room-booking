@@ -429,7 +429,7 @@ class HRB_Daily_Summary {
         $status_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT status, COUNT(*) AS bookings
              FROM {$bookings}
-             WHERE DATE(created_at) = %s
+             WHERE booking_date = %s
              GROUP BY status",
             $date
         ));
@@ -443,7 +443,7 @@ class HRB_Daily_Summary {
         $payment_status_rows = $wpdb->get_results($wpdb->prepare(
             "SELECT payment_status, COUNT(*) AS bookings
              FROM {$bookings}
-             WHERE DATE(created_at) = %s
+             WHERE booking_date = %s
              GROUP BY payment_status",
             $date
         ));
@@ -461,7 +461,7 @@ class HRB_Daily_Summary {
             "SELECT COALESCE(SUM(total_hours), 0) AS hours,
                     COALESCE(SUM(total_amount), 0) AS value
              FROM {$bookings}
-             WHERE DATE(created_at) = %s AND status NOT IN ('cancelled', 'no_show')",
+             WHERE booking_date = %s AND status NOT IN ('cancelled', 'no_show')",
             $date
         ));
 
@@ -478,7 +478,7 @@ class HRB_Daily_Summary {
                     COALESCE(SUM(b.total_amount), 0) AS value
              FROM {$bookings} b
              INNER JOIN {$rooms} r ON b.room_id = r.id
-             WHERE DATE(b.created_at) = %s AND b.status NOT IN ('cancelled', 'no_show')
+             WHERE b.booking_date = %s AND b.status NOT IN ('cancelled', 'no_show')
              GROUP BY b.room_id, r.name
              ORDER BY value DESC, r.name ASC",
             $date
@@ -503,7 +503,7 @@ class HRB_Daily_Summary {
                     COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'no_show')
                                       THEN total_amount ELSE 0 END), 0) AS value
              FROM {$bookings}
-             WHERE DATE(created_at) = %s
+             WHERE booking_date = %s
              GROUP BY method",
             $date
         ));
@@ -521,11 +521,12 @@ class HRB_Daily_Summary {
         // And the money that actually arrived on the day, by method. A booking
         // taken last week but paid for today belongs here, not above.
         $method_collected = $wpdb->get_results($wpdb->prepare(
-            "SELECT COALESCE(NULLIF(payment_method, ''), 'unknown') AS method,
-                    COALESCE(SUM(amount), 0) AS total
-             FROM {$payments}
-             WHERE DATE(COALESCE(processed_at, created_at)) = %s
-             AND status IN ('completed', 'paid')
+            "SELECT COALESCE(NULLIF(p.payment_method, ''), 'unknown') AS method,
+                    COALESCE(SUM(p.amount), 0) AS total
+             FROM {$payments} p
+             INNER JOIN {$bookings} b ON p.booking_id = b.id
+             WHERE b.booking_date = %s
+             AND p.status IN ('completed', 'paid')
              GROUP BY method",
             $date
         ));
@@ -572,7 +573,7 @@ class HRB_Daily_Summary {
              FROM {$bookings} b
              LEFT JOIN {$wpdb->prefix}hrb_customers c ON b.customer_id = c.id
              LEFT JOIN {$rooms} r ON b.room_id = r.id
-             WHERE DATE(b.created_at) = %s
+             WHERE b.booking_date = %s
              ORDER BY b.start_time ASC, b.id ASC",
             $date
         ));
@@ -603,10 +604,11 @@ class HRB_Daily_Summary {
         // This one deliberately stays on the payment date rather than the
         // booking's creation date — it answers "what came in today".
         $collected = $wpdb->get_row($wpdb->prepare(
-            "SELECT COUNT(*) AS payments, COALESCE(SUM(amount), 0) AS total
-             FROM {$payments}
-             WHERE DATE(COALESCE(processed_at, created_at)) = %s
-             AND status IN ('completed', 'paid')",
+            "SELECT COUNT(*) AS payments, COALESCE(SUM(p.amount), 0) AS total
+             FROM {$payments} p
+             INNER JOIN {$bookings} b ON p.booking_id = b.id
+             WHERE b.booking_date = %s
+             AND p.status IN ('completed', 'paid')",
             $date
         ));
 
@@ -623,7 +625,7 @@ class HRB_Daily_Summary {
             "SELECT COALESCE(SUM(p.amount), 0)
              FROM {$payments} p
              INNER JOIN {$bookings} b ON p.booking_id = b.id
-             WHERE DATE(b.created_at) = %s AND p.status = 'pending'",
+             WHERE b.booking_date = %s AND p.status = 'pending'",
             $date
         ));
 
@@ -635,7 +637,7 @@ class HRB_Daily_Summary {
             "SELECT COALESCE(SUM(p.amount), 0)
              FROM {$payments} p
              INNER JOIN {$bookings} b ON p.booking_id = b.id
-             WHERE DATE(b.created_at) = %s AND p.status = 'pending'
+             WHERE b.booking_date = %s AND p.status = 'pending'
              AND (p.transaction_id NOT LIKE %s OR p.transaction_id IS NULL)",
             $date,
             $wpdb->esc_like('CANCELFEE_') . '%'
@@ -645,10 +647,11 @@ class HRB_Daily_Summary {
         // was raised rather than the day the booking was taken: a fee charged
         // today on a booking from last month is today's outstanding money.
         $figures['pending_cancellation_fees'] = (float) $wpdb->get_var($wpdb->prepare(
-            "SELECT COALESCE(SUM(amount), 0)
-             FROM {$payments}
-             WHERE DATE(created_at) = %s AND status = 'pending'
-             AND transaction_id LIKE %s",
+            "SELECT COALESCE(SUM(p.amount), 0)
+             FROM {$payments} p
+             INNER JOIN {$bookings} b ON p.booking_id = b.id
+             WHERE b.booking_date = %s AND p.status = 'pending'
+             AND p.transaction_id LIKE %s",
             $date,
             $wpdb->esc_like('CANCELFEE_') . '%'
         ));
@@ -657,7 +660,7 @@ class HRB_Daily_Summary {
         $figures['cancellation_fees'] = (float) $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(cancellation_fee), 0)
              FROM {$bookings}
-             WHERE DATE(created_at) = %s",
+             WHERE booking_date = %s",
             $date
         ));
 
@@ -1065,17 +1068,17 @@ class HRB_Daily_Summary {
         return $html;
     }
     /**
-     * The day in sentences
+     * The day's diary in sentences
      *
-     * Counts in boxes do not tell whoever opens the mail what actually
-     * happened. This says how many bookings came in and how they were meant to
-     * be paid, what was cancelled, and where the money stands — the same
-     * figures as the cards above, written out.
+     * This describes the appointments that take place on the reported date -
+     * not the bookings that happened to be entered that day. That is the
+     * question someone opening this mail actually has: who is coming, what is
+     * it worth, and who still has to pay when they arrive.
      *
-     * Everything here is derived from the day's own booking rows, so the
-     * sentences and the list underneath can never disagree with each other.
+     * Everything is derived from the day's own booking rows, so the sentences
+     * and the list underneath can never disagree.
      *
-     * @since 1.10.4
+     * @since 1.11.0
      * @param array $figures
      * @return string HTML
      */
@@ -1098,51 +1101,36 @@ class HRB_Daily_Summary {
         if (empty($bookings)) {
             return $para(sprintf(
                 /* translators: %s: the date the summary covers */
-                esc_html__('No bookings were taken on %s.', 'hourly-room-booking'),
+                esc_html__('There are no appointments on %s.', 'hourly-room-booking'),
                 $b($date)
             ));
         }
 
-        // Tally the day by channel and by what became of each booking.
-        $tally = [
-            'onsite' => ['total' => 0, 'cancelled' => 0, 'standing' => 0, 'owed' => 0.0],
-            'paypal' => ['total' => 0, 'cancelled' => 0, 'standing' => 0, 'owed' => 0.0],
-            'other'  => ['total' => 0, 'cancelled' => 0, 'standing' => 0, 'owed' => 0.0],
-        ];
+        // Split the diary: what stands, what was cancelled, and within what
+        // stands, who has paid and who pays on arrival.
+        $standing  = [];
+        $cancelled = [];
 
-        $cancelled = 0;
-        $standing  = 0;
-        $confirmed = 0;
-        $pending   = 0;
+        $paid_by   = ['paypal' => ['n' => 0, 'sum' => 0.0], 'onsite' => ['n' => 0, 'sum' => 0.0], 'other' => ['n' => 0, 'sum' => 0.0]];
+        $owing_by  = ['onsite' => ['n' => 0, 'sum' => 0.0], 'paypal' => ['n' => 0, 'sum' => 0.0], 'other' => ['n' => 0, 'sum' => 0.0]];
+
+        $value = 0.0;
 
         foreach ($bookings as $booking) {
-            $channel = isset($tally[$booking['channel']]) ? $booking['channel'] : 'other';
-
-            $tally[$channel]['total']++;
+            $channel = isset($paid_by[$booking['channel']]) ? $booking['channel'] : 'other';
 
             if (empty($booking['stands'])) {
-                $tally[$channel]['cancelled']++;
-                $cancelled++;
+                $cancelled[] = $booking;
                 continue;
             }
 
-            $tally[$channel]['standing']++;
-            $standing++;
+            $standing[] = $booking;
+            $value     += (float) $booking['amount'];
 
-            // "Still standing" and "confirmed" are not the same thing: a
-            // booking can be neither cancelled nor confirmed yet. The
-            // sentence names the confirmed ones, so they are counted
-            // separately and anything still pending is said out loud
-            // rather than quietly folded in.
-            if ('confirmed' === $booking['status'] || 'completed' === $booking['status']) {
-                $confirmed++;
-            } else {
-                $pending++;
-            }
+            $bucket = empty($booking['paid']) ? 'owing_by' : 'paid_by';
 
-            if (empty($booking['paid'])) {
-                $tally[$channel]['owed'] += (float) $booking['amount'];
-            }
+            ${$bucket}[$channel]['n']++;
+            ${$bucket}[$channel]['sum'] += (float) $booking['amount'];
         }
 
         $names = [
@@ -1151,144 +1139,90 @@ class HRB_Daily_Summary {
             'other'  => __('other methods', 'hourly-room-booking'),
         ];
 
-        /** "2 through PayPal and 1 on site" — only the channels that were used. */
-        $listing = function ($key) use ($tally, $names, $b) {
-            $parts = [];
-
-            foreach ($tally as $channel => $counts) {
-                if ($counts[$key] > 0) {
-                    $parts[] = $b((string) $counts[$key]) . ' ' . esc_html($names[$channel]);
-                }
-            }
-
-            if (count($parts) <= 1) {
-                return implode('', $parts);
-            }
-
-            $last = array_pop($parts);
-
-            return sprintf(
-                /* translators: 1: all but the last item, comma separated; 2: the last item */
-                esc_html__('%1$s and %2$s', 'hourly-room-booking'),
-                implode(', ', $parts),
-                $last
-            );
-        };
-
         $html = '';
 
-        // --- what came in ---------------------------------------------------
+        // --- how many, and what they are worth --------------------------------
         $html .= $para(sprintf(
-            /* translators: 1: date, 2: number of bookings, 3: breakdown by payment method */
+            /* translators: 1: number of appointments, 2: date, 3: their total value */
             esc_html(_n(
-                'On %1$s, %2$s booking was taken: %3$s.',
-                'On %1$s, %2$s bookings were taken: %3$s.',
-                count($bookings),
+                'There is %1$s appointment on %2$s, worth %3$s in total.',
+                'There are %1$s appointments on %2$s, worth %3$s in total.',
+                count($standing),
                 'hourly-room-booking'
             )),
+            $b((string) count($standing)),
             $b($date),
-            $b((string) count($bookings)),
-            $listing('total')
+            $b(hrb_format_amount($value))
         ));
 
-        // --- what became of them ---------------------------------------------
-        if ($cancelled > 0) {
-            $sentence = sprintf(
-                /* translators: 1: number cancelled, 2: breakdown by method, 3: number confirmed */
-                esc_html__('Cancelled: %1$s (%2$s). Confirmed: %3$s.', 'hourly-room-booking'),
-                $b((string) $cancelled),
-                $listing('cancelled'),
-                $b((string) $confirmed)
-            );
-
-            if ($pending > 0) {
-                $sentence .= ' ' . sprintf(
-                    /* translators: %s: number of bookings neither confirmed nor cancelled */
-                    esc_html__('Still awaiting confirmation: %s.', 'hourly-room-booking'),
-                    $b((string) $pending)
-                );
-            }
-
-            $html .= $para($sentence);
-        }
-
-        // --- the money ---------------------------------------------------------
-        // A labelled list rather than another sentence: these are figures to be
-        // read off, and four amounts buried in prose is where a reader gives up.
-        $channels = isset($figures['channels']) ? $figures['channels'] : [];
-
-        $rows = [
-            [
-                __('Revenue from bookings that stand', 'hourly-room-booking'),
-                hrb_format_amount(isset($figures['value']) ? $figures['value'] : 0),
-                true,
-            ],
-        ];
-
+        // --- already settled ---------------------------------------------------
         foreach (['paypal', 'onsite', 'other'] as $channel) {
-            // A channel the day never used earns no line.
-            if ($tally[$channel]['total'] < 1) {
+            if ($paid_by[$channel]['n'] < 1) {
                 continue;
             }
 
-            $rows[] = [
-                sprintf(
-                    /* translators: %s: a payment method, e.g. PayPal */
-                    __('Received %s', 'hourly-room-booking'),
-                    $names[$channel]
-                ),
-                hrb_format_amount(isset($channels[$channel]['collected']) ? (float) $channels[$channel]['collected'] : 0.0),
-                false,
-            ];
+            $html .= $para(sprintf(
+                /* translators: 1: number of appointments, 2: payment method, 3: amount */
+                esc_html(_n(
+                    '%1$s appointment has already been paid via %2$s: %3$s.',
+                    '%1$s appointments have already been paid via %2$s: %3$s.',
+                    $paid_by[$channel]['n'],
+                    'hourly-room-booking'
+                )),
+                $b((string) $paid_by[$channel]['n']),
+                esc_html($names[$channel]),
+                $b(hrb_format_amount($paid_by[$channel]['sum']))
+            ));
         }
 
+        // --- paying on arrival --------------------------------------------------
         foreach (['onsite', 'paypal', 'other'] as $channel) {
-            if ($tally[$channel]['owed'] <= 0) {
+            if ($owing_by[$channel]['n'] < 1) {
                 continue;
             }
 
-            $rows[] = [
-                sprintf(
-                    /* translators: %s: a payment method, e.g. on site */
-                    __('Pending (%s)', 'hourly-room-booking'),
-                    $names[$channel]
-                ),
-                hrb_format_amount($tally[$channel]['owed']),
-                false,
-            ];
+            $html .= $para(sprintf(
+                /* translators: 1: number of appointments, 2: payment method, 3: amount */
+                esc_html(_n(
+                    '%1$s appointment is paying %2$s: %3$s.',
+                    '%1$s appointments are paying %2$s: %3$s.',
+                    $owing_by[$channel]['n'],
+                    'hourly-room-booking'
+                )),
+                $b((string) $owing_by[$channel]['n']),
+                esc_html($names[$channel]),
+                $b(hrb_format_amount($owing_by[$channel]['sum']))
+            ));
         }
 
-        $html .= $para(esc_html__('Regarding the finances:', 'hourly-room-booking'));
+        // --- and what fell away --------------------------------------------------
+        if ($cancelled) {
+            $cancelled_sum = 0.0;
+            foreach ($cancelled as $booking) {
+                $cancelled_sum += (float) $booking['amount'];
+            }
 
-        $table = '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%"'
-               . ' style="border-collapse:collapse;margin:0 0 6px 0;">';
-
-        foreach ($rows as $index => $row) {
-            list($label, $amount, $lead) = $row;
-
-            $table .= '<tr>'
-                . '<td style="padding:9px 12px 9px 0;border-bottom:1px solid #eceef1;font-size:14px;color:'
-                . ($lead ? $ink : $muted) . ';' . ($lead ? 'font-weight:600;' : '') . '">'
-                . esc_html($label)
-                . '</td>'
-                . '<td align="right" style="padding:9px 0;border-bottom:1px solid #eceef1;font-size:'
-                . ($lead ? '16px' : '15px') . ';font-weight:700;color:' . $ink . ';white-space:nowrap;">'
-                . esc_html($amount)
-                . '</td></tr>';
+            $html .= $para(sprintf(
+                /* translators: 1: number of cancelled appointments, 2: their value */
+                esc_html(_n(
+                    '%1$s appointment for this day was cancelled (%2$s).',
+                    '%1$s appointments for this day were cancelled (%2$s).',
+                    count($cancelled),
+                    'hourly-room-booking'
+                )),
+                $b((string) count($cancelled)),
+                $b(hrb_format_amount($cancelled_sum))
+            ));
         }
 
-        $html .= $table . '</table>';
-
-        // --- and who has to be chased ------------------------------------------
+        // --- the list that follows -----------------------------------------------
         $owing = 0;
-        foreach ($tally as $counts) {
-            if ($counts['owed'] > 0) { $owing++; }
+        foreach ($owing_by as $counts) {
+            $owing += $counts['n'];
         }
 
         if ($owing > 0) {
             $html .= $para(esc_html__('Still to be collected:', 'hourly-room-booking'));
-        } elseif ($standing > 0) {
-            $html .= $para(esc_html__('Everything that stands is already paid for.', 'hourly-room-booking'));
         }
 
         return $html;

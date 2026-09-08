@@ -358,7 +358,7 @@ check_contains('payments received', $html, '120,00 €');
 // The pending figure in the finance list and the rows underneath it come
 // from the same booking rows, so they can never disagree: one unpaid
 // on-site booking of 80,00 EUR, listed once and totalled once.
-check_contains('the pending figure is stated', $html, 'Pending (');
+check_contains('the money still to collect is stated', $html, 'paying on site');
 check_contains('and the customer behind it is named', $html, 'Hans Müller');
 check('nobody who paid is on the chase list', strpos($html, 'Erika Mustermann'), false);
 check('nor is the cancelled booking', strpos($html, 'Jonas Weber'), false);
@@ -442,8 +442,9 @@ echo "\n-- the split in the email --\n";
 
 // Assert on the figures and labels the reader sees, not on the markup around
 // them — pinning table cells is what made these break on every redesign.
-check_contains('the day is described in words', $html, 'bookings were taken');
-check_contains('...and the finances listed under it', $html, 'Regarding the finances');
+check_contains('the day is described in words', $html, 'appointments on');
+check_contains('...with what they are worth', $html, 'worth');
+check_contains('...and what has been paid', $html, 'already been paid via');
 
 // Money owed is shown as two separate figures - a room somebody still has to
 // pay for is chased differently from a penalty on a booking that is gone - so
@@ -484,7 +485,7 @@ $cash_html = $summary->render_html($cash_only);
 
 // The four cards are always present, whatever the day held, so the mail has
 // the same shape every morning.
-foreach (['Buchungen', 'Zahlungseingang', 'Stornogeb', 'Offen'] as $card) {
+foreach (['Termine', 'Zahlungseingang', 'Stornogeb', 'Offen'] as $card) {
     check_contains("the {$card} card is there on a quiet day", $cash_html, $card);
 }
 
