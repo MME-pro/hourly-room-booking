@@ -1831,7 +1831,7 @@ class HRB_Database {
         // keys listed are rewritten, so a design version bump - which throws
         // away every manual edit on the site - is not needed to ship one new
         // figure in one mail.
-        $template_version = '2026-09-08-summary-charts';
+        $template_version = '2026-09-08-summary-cards';
         $template_keys    = array('daily_summary_admin', 'booking_cancelled_user', 'booking_cancelled_fee_user');
 
         $resync = (get_option('hrb_email_design_version') !== $design_version);

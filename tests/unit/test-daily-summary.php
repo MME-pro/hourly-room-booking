@@ -284,11 +284,10 @@ check_contains('it names the company in the footer', $bundled['html_content'], '
 foreach ([
     '{summary_date}',
     '{total_bookings}',
-    '{total_revenue}',
     '{hours_booked}',
     '{payments_received}',
-    '{outstanding}',
-    '{cancellation_fees}',
+    '{pending_cancellation_fees}',
+    '{outstanding_bookings}',
     '{payment_method_rows}',
     '{payment_status_rows}',
     '{rooms_rows}',
@@ -298,9 +297,9 @@ foreach ([
 
 // Inline styles rather than a <style> block for the parts that must survive:
 // Outlook and most webmail strip the head, and the mail is read on phones.
-check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:32px');
-check_contains('it draws the split as a bar', $bundled['html_content'], '{split_bar}');
-check_contains('with a legend beside it', $bundled['html_content'], '{split_legend}');
+check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:26px');
+check_contains('the money owed is split in two', $bundled['html_content'], 'Offene Stornogeb');
+check_contains('and named as such', $bundled['html_content'], 'ohne Stornogeb');
 
 echo "\n-- render_html --\n";
 
@@ -336,10 +335,10 @@ $html = $summary->render_html($figures);
 
 check_contains('the date it covers', $html, '04.09.2026');
 check_contains('the number of bookings created', $html, '>4<');
-check_contains('the booking value', $html, '260,00 €');
+check_contains('the money received', $html, '120,00 €');
 check_contains('the hours booked', $html, '7 Std.');
 check_contains('payments received', $html, '120,00 €');
-check_contains('the outstanding amount', $html, '80,00 €');
+check('the outstanding amount is split, not shown whole', strpos($html, '80,00 €') !== false, false);
 check_contains('the first room', $html, 'Room 2');
 check_contains('the second room', $html, 'Room 3');
 check_contains('a per-room value', $html, '200,00 €');
@@ -427,10 +426,11 @@ check_contains('a breakdown by payment method', $html, 'Zahlungsart');
 check_contains('...naming the on-site method', $html, 'On-site Payment');
 check_contains('...and PayPal', $html, 'PayPal');
 
-// The split bar has to be drawn from the same numbers the legend prints, so
-// the shares are what gets checked rather than pixel widths.
-check_contains('on-site takes its share of the bar', $html, '62&nbsp;%');
-check_contains('and PayPal the rest', $html, '38&nbsp;%');
+// Money owed is shown as two separate figures - a room somebody still has to
+// pay for is chased differently from a penalty on a booking that is gone - so
+// the mail must never present them as one lump.
+check_contains('outstanding booking money has its own card', $html, 'ohne Stornogeb');
+check_contains('and outstanding fees theirs', $html, 'Offene Stornogeb');
 
 // Every method carries its own colour, chosen by the method and not by where
 // it happens to land in the table.
@@ -458,18 +458,20 @@ $cash_only = array_merge($figures, [
 
 $cash_html = $summary->render_html($cash_only);
 
-check_contains('a cash-only day still names the on-site channel', $cash_html, 'Vor Ort');
-// Two different things, deliberately: the legend under the split bar always
-// names both channels, so a zero PayPal day reads as "none" rather than going
-// blank, while the method table below lists only the methods actually used.
-// So PayPal appears exactly once — in the legend, not as a table row.
+// The method table lists only what was actually used, so a cash-only day gets
+// no empty PayPal row to read past.
 check(
-    'PayPal is named once, in the legend, and not as a table row',
+    'no empty PayPal row is invented',
     substr_count($cash_html, '>PayPal<'),
-    1
+    0
 );
-check_contains('showing nothing came in that way', $cash_html, '0&nbsp;%');
 check_contains('and the cash row is there', $cash_html, 'Cash');
+
+// The four cards are always present, whatever the day held, so the mail has
+// the same shape every morning.
+foreach (['Neue Buchungen', 'Zahlungseingang', 'Offene Stornogeb', 'Offener Betrag'] as $card) {
+    check_contains("the {$card} card is there on a quiet day", $cash_html, $card);
+}
 
 echo "\n-- figures a filter has trimmed --\n";
 

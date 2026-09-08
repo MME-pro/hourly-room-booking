@@ -411,6 +411,8 @@ class HRB_Daily_Summary {
             'collected'         => 0.0,
             'collected_count'   => 0,
             'outstanding'       => 0.0,
+            'outstanding_bookings'      => 0.0,
+            'pending_cancellation_fees' => 0.0,
             'cancellation_fees' => 0.0,
             'by_payment_method' => [],
             'channels'          => [
@@ -570,13 +572,42 @@ class HRB_Daily_Summary {
             $figures['collected']       = (float) $collected->total;
         }
 
-        // Still to be collected on the bookings taken today.
+        // Still to be collected on the bookings taken today. This total keeps
+        // its old meaning - it includes any cancellation fee - because a site
+        // may have built a template on {outstanding}; the two halves below are
+        // what the summary itself now shows.
         $figures['outstanding'] = (float) $wpdb->get_var($wpdb->prepare(
             "SELECT COALESCE(SUM(p.amount), 0)
              FROM {$payments} p
              INNER JOIN {$bookings} b ON p.booking_id = b.id
              WHERE DATE(b.created_at) = %s AND p.status = 'pending'",
             $date
+        ));
+
+        // The booking money still owed, with cancellation fees taken out. The
+        // two are chased differently - one is a room somebody still has to pay
+        // for, the other is a penalty on a booking that is gone - so the
+        // summary keeps them apart.
+        $figures['outstanding_bookings'] = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(p.amount), 0)
+             FROM {$payments} p
+             INNER JOIN {$bookings} b ON p.booking_id = b.id
+             WHERE DATE(b.created_at) = %s AND p.status = 'pending'
+             AND (p.transaction_id NOT LIKE %s OR p.transaction_id IS NULL)",
+            $date,
+            $wpdb->esc_like('CANCELFEE_') . '%'
+        ));
+
+        // Cancellation fees charged but not yet paid. Scoped to the day the fee
+        // was raised rather than the day the booking was taken: a fee charged
+        // today on a booking from last month is today's outstanding money.
+        $figures['pending_cancellation_fees'] = (float) $wpdb->get_var($wpdb->prepare(
+            "SELECT COALESCE(SUM(amount), 0)
+             FROM {$payments}
+             WHERE DATE(created_at) = %s AND status = 'pending'
+             AND transaction_id LIKE %s",
+            $date,
+            $wpdb->esc_like('CANCELFEE_') . '%'
         ));
 
         // Cancellation fees on the bookings taken today.
@@ -739,6 +770,12 @@ class HRB_Daily_Summary {
             '{payments_received}'   => hrb_format_amount($figures['collected']),
             '{payments_count}'      => (string) (int) $figures['collected_count'],
             '{outstanding}'         => hrb_format_amount($figures['outstanding']),
+            '{outstanding_bookings}'      => hrb_format_amount(
+                isset($figures['outstanding_bookings']) ? $figures['outstanding_bookings'] : 0
+            ),
+            '{pending_cancellation_fees}' => hrb_format_amount(
+                isset($figures['pending_cancellation_fees']) ? $figures['pending_cancellation_fees'] : 0
+            ),
             '{cancellation_fees}'   => hrb_format_amount($figures['cancellation_fees']),
             '{onsite_bookings}'     => (string) $channels['onsite']['bookings'],
             '{onsite_revenue}'      => hrb_format_amount($channels['onsite']['value']),

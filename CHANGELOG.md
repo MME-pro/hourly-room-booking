@@ -5,6 +5,14 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.3] - 2026-09-08
+
+### Changed
+- **The daily summary opens with four figures.** New bookings, money received today (including any cancellation fee that was paid), cancellation fees still outstanding, and booking money still outstanding. They run two per row on a desktop and stack on a phone. The "on-site against PayPal" bar and the separate payments panel are gone — the money they carried is in the cards, and the per-method table below still shows the split.
+
+### Added
+- **Outstanding money is reported as two figures, not one.** A room somebody still has to pay for and a penalty on a booking that no longer exists are chased differently, so the summary keeps them apart: `{outstanding_bookings}` excludes cancellation fees, `{pending_cancellation_fees}` counts only them. Fees are counted on the day the fee was raised rather than the day the booking was taken — a fee charged today on last month's booking is today's outstanding money. `{outstanding}` keeps its old meaning (both together) so an edited template still works.
+
 ## [1.10.2] - 2026-09-08
 
 ### Changed
