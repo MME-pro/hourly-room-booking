@@ -324,6 +324,23 @@ $figures = [
         'onsite' => ['bookings' => 2, 'value' => 160.00, 'collected' => 120.00],
         'paypal' => ['bookings' => 2, 'value' => 100.00, 'collected' => 0.00],
     ],
+    // The written summary is built from these rows, so the fixture needs
+    // them: two on site with one still to pay, and two through PayPal of
+    // which one was cancelled.
+    'bookings'          => [
+        ['reference' => 'HRB-T-1', 'customer' => 'Erika Mustermann', 'room' => 'Room 2',
+         'start' => '10:00', 'end' => '12:00', 'amount' => 80.00,
+         'method' => 'onsite', 'channel' => 'onsite', 'status' => 'confirmed', 'stands' => true, 'paid' => true],
+        ['reference' => 'HRB-T-2', 'customer' => 'Hans Müller', 'room' => 'Room 3',
+         'start' => '14:00', 'end' => '16:00', 'amount' => 80.00,
+         'method' => 'onsite', 'channel' => 'onsite', 'status' => 'confirmed', 'stands' => true, 'paid' => false],
+        ['reference' => 'HRB-T-3', 'customer' => 'Sofia Rossi', 'room' => 'Room 2',
+         'start' => '17:00', 'end' => '19:00', 'amount' => 100.00,
+         'method' => 'paypal', 'channel' => 'paypal', 'status' => 'confirmed', 'stands' => true, 'paid' => true],
+        ['reference' => 'HRB-T-4', 'customer' => 'Jonas Weber', 'room' => 'Room 3',
+         'start' => '19:00', 'end' => '21:00', 'amount' => 50.00,
+         'method' => 'paypal', 'channel' => 'paypal', 'status' => 'cancelled', 'stands' => false, 'paid' => false],
+    ],
     'channels'          => [
         'onsite' => ['bookings' => 2, 'value' => 160.00, 'collected' => 120.00],
         'paypal' => ['bookings' => 2, 'value' => 100.00, 'collected' => 0.00],
@@ -338,7 +355,13 @@ check_contains('the number of bookings created', $html, '>4<');
 check_contains('the money received', $html, '120,00 €');
 check_contains('the hours booked', $html, '7 Std.');
 check_contains('payments received', $html, '120,00 €');
-check('the outstanding amount is split, not shown whole', strpos($html, '80,00 €') !== false, false);
+// The pending figure in the finance list and the rows underneath it come
+// from the same booking rows, so they can never disagree: one unpaid
+// on-site booking of 80,00 EUR, listed once and totalled once.
+check_contains('the pending figure is stated', $html, 'Pending (');
+check_contains('and the customer behind it is named', $html, 'Hans Müller');
+check('nobody who paid is on the chase list', strpos($html, 'Erika Mustermann'), false);
+check('nor is the cancelled booking', strpos($html, 'Jonas Weber'), false);
 // Rooms and the per-method table left the mail in 1.10.4; what replaced
 // them is the written summary, checked below.
 check_contains('the payment-status breakdown', $html, 'Paid');
@@ -419,7 +442,8 @@ echo "\n-- the split in the email --\n";
 
 // Assert on the figures and labels the reader sees, not on the markup around
 // them — pinning table cells is what made these break on every redesign.
-check_contains('the day is described in words', $html, 'Zusammenfassung');
+check_contains('the day is described in words', $html, 'bookings were taken');
+check_contains('...and the finances listed under it', $html, 'Regarding the finances');
 
 // Money owed is shown as two separate figures - a room somebody still has to
 // pay for is chased differently from a penalty on a booking that is gone - so
@@ -513,6 +537,8 @@ $injected = $summary->render_html(array_merge($empty_day, [
         'amount'    => 10.0,
         'method'    => 'onsite',
         'channel'   => 'onsite',
+        'status'    => 'confirmed',
+        'stands'    => true,
         'paid'      => false,
     ]],
 ]));

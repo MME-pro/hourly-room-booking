@@ -5,6 +5,15 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.5] - 2026-09-09
+
+### Changed
+- **The written summary now accounts for the whole day.** It opens with what came in and how it was meant to be paid ("On 09.11.2026, 4 bookings were taken: 2 on site and 2 PayPal"), says what was cancelled and what is left ("Cancelled: 3 (2 on site and 1 PayPal). Still standing: 1"), and then lists the finances as labelled figures rather than another sentence: revenue, money received per method, and anything still pending per method. Cancelled bookings are counted in the sentences but stay out of the list of people to collect from — a cancelled booking owes the fee, not the room.
+- **The revenue line says what it counts.** It reads "Revenue from bookings that stand" rather than "Total revenue", because money received can legitimately exceed it: a cancelled booking that was paid for is not refunded, so the money is real income while the booking is no longer counted. Two figures that look contradictory need the label to explain them.
+
+### Fixed
+- The opening sentence said "1 bookings were taken"; it goes through `_n()` now, with both German forms in the catalogue. The sentence about cancellations was reshaped so no verb has to agree with a number that changes daily.
+- The written summary and the empty booking list both announced that everything was paid for, one after the other. The list stays quiet when the sentences have already said it.
 ## [1.10.4] - 2026-09-09
 
 ### Added

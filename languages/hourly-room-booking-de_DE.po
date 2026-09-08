@@ -4156,3 +4156,35 @@ msgstr "Am %s sind keine Buchungen eingegangen."
 
 msgid "Everything taken today is already paid for."
 msgstr "Alle heutigen Buchungen sind bereits bezahlt."
+
+msgid "Cancelled: %1$s (%2$s). Still standing: %3$s."
+msgstr "Storniert: %1$s (%2$s). Verbleibend: %3$s."
+
+msgid "Regarding the finances:"
+msgstr "Zu den Finanzen:"
+
+msgid "Revenue from bookings that stand"
+msgstr "Umsatz aus bestehenden Buchungen"
+
+msgid "Received %s"
+msgstr "Erhalten %s"
+
+msgid "Pending (%s)"
+msgstr "Offen (%s)"
+
+msgid "Still to be collected:"
+msgstr "Noch einzuziehen:"
+
+msgid "Everything that stands is already paid for."
+msgstr "Alle bestehenden Buchungen sind bereits bezahlt."
+
+msgid "on site"
+msgstr "vor Ort"
+
+msgid "other methods"
+msgstr "andere Zahlungsarten"
+
+msgid "On %1$s, %2$s booking was taken: %3$s."
+msgid_plural "On %1$s, %2$s bookings were taken: %3$s."
+msgstr[0] "Am %1$s ist %2$s Buchung eingegangen: %3$s."
+msgstr[1] "Am %1$s sind %2$s Buchungen eingegangen: %3$s."
