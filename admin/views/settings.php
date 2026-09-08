@@ -542,13 +542,26 @@ $helper = new HRB_Settings_Helper();
                                                 'hrb_send_daily_summary'
                                             );
                                             ?>
+                                            <?php
+                                            // A <select> rather than <input type="time">: the browser renders
+                                            // that one in its own locale, so an en-US browser shows 12-hour
+                                            // AM/PM whatever the site language is, and nothing in the page can
+                                            // change it. The list below is 24-hour everywhere.
+                                            $current_time = HRB_Daily_Summary::normalize_time($field_value);
+                                            $time_choices = HRB_Daily_Summary::send_time_choices($current_time);
+                                            ?>
                                             <div class="hrb-time-setting">
-                                                <input
-                                                    type="time"
+                                                <select
                                                     id="<?php echo esc_attr($setting_key); ?>"
                                                     name="settings[<?php echo esc_attr($setting_key); ?>]"
-                                                    value="<?php echo esc_attr(HRB_Daily_Summary::normalize_time($field_value)); ?>"
+                                                    class="hrb-time-select"
                                                 >
+                                                    <?php foreach ($time_choices as $choice): ?>
+                                                        <option value="<?php echo esc_attr($choice); ?>" <?php selected($choice, $current_time); ?>>
+                                                            <?php echo esc_html($choice); ?>
+                                                        </option>
+                                                    <?php endforeach; ?>
+                                                </select>
 
                                                 <a href="<?php echo esc_url($send_now_url); ?>" class="button">
                                                     <span class="dashicons dashicons-email-alt"></span>

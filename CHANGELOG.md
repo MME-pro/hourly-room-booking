@@ -5,6 +5,15 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.1] - 2026-09-08
+
+### Fixed
+- **Cancelling a booking by changing its status sent the "booking modified" email.** The Cancel action and the edit form take different routes through the code: `cancel_booking()` sent the cancellation letter, while setting the status to `cancelled` on the edit form fell through to the generic "your booking has been modified" mail. Worse, on a booking that had just been charged the fee, that mail carried no fee, no bank details and no invoice — the customer was billed and never told where to pay. Both routes now send the same letter, chosen by `HRB_Booking_Manager::notification_event_for_change()`. Only the transition into `cancelled` counts, so editing an already-cancelled booking is still a modification, and every other status move (completed, no-show, confirming, reinstating) is unchanged.
+- **The daily summary send time was shown in 12-hour form.** The field was an `<input type="time">`, which the browser draws in its own locale: an en-US browser showed AM/PM whatever the site language was, and nothing on the page could change it. It is a list of 24-hour times now. A stored time that is not on the half-hour grid is kept and sorted into place rather than being quietly rounded away.
+
+### Changed
+- **The daily summary email was rewritten.** It opens with the two figures that matter — bookings taken and revenue — each with the on-site/PayPal split underneath, then the breakdown by payment method, booking status, payment status, money in and out, and room usage. Labels were reworked throughout: *Buchungsumsatz* rather than "Buchungswert", *Zahlungseingang heute*, *Offene Forderungen*, *Auslastung nach Raum*. The subject now carries the day's figures, so the inbox list is useful on its own. Styling is inline rather than a `<style>` block, because Outlook and most webmail strip the document head, and the layout stacks on a phone.
+- **`{payments_received}` is the amount on its own.** It used to have the transaction count glued on in brackets — "237,55 € (3)" — which cannot be laid out. The count is `{payments_count}`.
 ## [1.10.0] - 2026-09-08
 
 ### Fixed

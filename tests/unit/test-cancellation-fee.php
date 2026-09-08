@@ -74,6 +74,54 @@ check('an empty status', HRB_Booking_Manager::charges_cancellation_fee(''), true
 check('a PayPal booking that was never paid', HRB_Booking_Manager::charges_cancellation_fee('pending'), true);
 
 // ---------------------------------------------------------------------------
+// Cancelling from the edit form is still a cancellation
+// ---------------------------------------------------------------------------
+
+echo "\n-- which notification a change sends --\n";
+
+// A cancellation made by changing the status on the edit form used to fall
+// through to the generic "your booking has been modified" mail - and when a
+// fee had just been charged, that mail carried no fee, no bank details and no
+// invoice. The customer was billed and never told where to pay.
+check(
+    'confirmed to cancelled sends the cancellation',
+    HRB_Booking_Manager::notification_event_for_change('confirmed', 'cancelled'),
+    'booking_cancelled'
+);
+
+check(
+    'pending to cancelled too',
+    HRB_Booking_Manager::notification_event_for_change('pending', 'cancelled'),
+    'booking_cancelled'
+);
+
+check(
+    'case and whitespace do not matter',
+    HRB_Booking_Manager::notification_event_for_change(' Confirmed ', 'Cancelled'),
+    'booking_cancelled'
+);
+
+// Only the transition counts. Editing a booking that was already cancelled -
+// fixing a typo in it, say - must not send the cancellation letter again.
+check(
+    'editing an already cancelled booking is a modification',
+    HRB_Booking_Manager::notification_event_for_change('cancelled', 'cancelled'),
+    'booking_modified'
+);
+
+echo "\n-- everything else is still a modification --\n";
+
+foreach ([
+    ['confirmed', 'confirmed', 'a change with no status move'],
+    ['confirmed', 'completed', 'marking a booking completed'],
+    ['confirmed', 'no_show', 'marking a no-show'],
+    ['pending', 'confirmed', 'confirming a booking'],
+    ['cancelled', 'confirmed', 'reinstating a cancelled booking'],
+] as [$from, $to, $label]) {
+    check($label, HRB_Booking_Manager::notification_event_for_change($from, $to), 'booking_modified');
+}
+
+// ---------------------------------------------------------------------------
 // Which letter they get
 // ---------------------------------------------------------------------------
 

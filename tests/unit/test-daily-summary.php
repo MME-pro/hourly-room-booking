@@ -121,6 +121,46 @@ check('junk falls back to midnight', HRB_Daily_Summary::normalize_time('lunchtim
 check('empty falls back to midnight', HRB_Daily_Summary::normalize_time(''), '00:00');
 
 // ---------------------------------------------------------------------------
+// The times offered on the settings screen
+// ---------------------------------------------------------------------------
+
+echo "\n-- send_time_choices --\n";
+
+$choices = HRB_Daily_Summary::send_time_choices('00:00');
+
+check('half-hourly across the day', count($choices), 48);
+check('starts at midnight', $choices[0], '00:00');
+check('ends at half past eleven', end($choices), '23:30');
+
+// The whole point: <input type="time"> renders in the browser's locale and
+// shows AM/PM on an en-US machine whatever the site language is. A select of
+// 24-hour strings is the same everywhere.
+check(
+    'every option is 24-hour',
+    (bool) preg_grep('/[ap]\.?m\.?/i', $choices),
+    false
+);
+
+check(
+    'the afternoon is written as 13:00, not 1:00',
+    in_array('13:00', $choices, true) && in_array('23:00', $choices, true),
+    true
+);
+
+// A site that set 18:05 before this was a select must not have it silently
+// rounded away the next time somebody opens the settings screen.
+$offgrid = HRB_Daily_Summary::send_time_choices('18:05');
+
+check('an off-grid time is kept', in_array('18:05', $offgrid, true), true);
+check('and nothing else is lost', count($offgrid), 49);
+
+$at = array_search('18:05', $offgrid, true);
+check('it is sorted into place', [$offgrid[$at - 1], $offgrid[$at + 1]], ['18:00', '18:30']);
+
+// A time already on the grid must not be duplicated.
+check('a time already offered is not added twice', count(HRB_Daily_Summary::send_time_choices('18:00')), 48);
+
+// ---------------------------------------------------------------------------
 // Which day gets reported
 // ---------------------------------------------------------------------------
 
@@ -233,11 +273,32 @@ echo "\n-- the bundled template --\n";
 $bundled = HRB_Daily_Summary::bundled_template();
 
 check('the summary template is bundled', isset($bundled['html_content']), true);
-check_contains('it uses the branded container', $bundled['html_content'], 'class="container"');
+
+// These used to assert on CSS class names, which said nothing about whether
+// the mail was any good and broke the moment the template was redesigned.
+// What matters is that it is a whole document carrying every figure.
+check_contains('it is a complete document', $bundled['html_content'], '<!DOCTYPE html>');
 check_contains('it carries the company logo slot', $bundled['html_content'], '{company_logo_html}');
-check_contains('it carries the branded footer', $bundled['html_content'], 'class="footer"');
-check_contains('it uses the branded details table', $bundled['html_content'], 'class="booking-details"');
-check_contains('it highlights the amount row', $bundled['html_content'], 'class="amount-row"');
+check_contains('it names the company in the footer', $bundled['html_content'], '{company_name}');
+
+foreach ([
+    '{summary_date}',
+    '{total_bookings}',
+    '{total_revenue}',
+    '{hours_booked}',
+    '{payments_received}',
+    '{outstanding}',
+    '{cancellation_fees}',
+    '{payment_method_rows}',
+    '{payment_status_rows}',
+    '{rooms_rows}',
+] as $token) {
+    check_contains("it carries {$token}", $bundled['html_content'], $token);
+}
+
+// Inline styles rather than a <style> block for the parts that must survive:
+// Outlook and most webmail strip the head, and the mail is read on phones.
+check_contains('the figures are styled inline', $bundled['html_content'], 'style="font-size:30px');
 
 echo "\n-- render_html --\n";
 
@@ -272,7 +333,7 @@ $figures = [
 $html = $summary->render_html($figures);
 
 check_contains('the date it covers', $html, '04.09.2026');
-check_contains('the number of bookings created', $html, '<strong>4</strong>');
+check_contains('the number of bookings created', $html, '>4<');
 check_contains('the booking value', $html, '260,00 €');
 check_contains('the hours booked', $html, '>7<');
 check_contains('payments received', $html, '120,00 €');
@@ -309,11 +370,11 @@ check('nor a method the plugin has never heard of', HRB_Daily_Summary::payment_c
 
 echo "\n-- the split in the email --\n";
 
-check_contains('the number taken on site', $html, '<th>davon vor Ort</th><td>2</td>');
-check_contains('the number taken through PayPal', $html, '<th>davon PayPal</th><td>2</td>');
-check_contains('the money taken on site', $html, '<th>davon vor Ort</th><td>160,00 €</td>');
-check_contains('the money taken through PayPal', $html, '<th>davon PayPal</th><td>100,00 €</td>');
-check_contains('a breakdown table by method', $html, 'Nach Zahlungsart');
+check_contains('the number taken on site', $html, '2 vor Ort');
+check_contains('the number taken through PayPal', $html, '2 PayPal');
+check_contains('the money taken on site', $html, '160,00 € vor Ort');
+check_contains('the money taken through PayPal', $html, '100,00 € PayPal');
+check_contains('a breakdown table by method', $html, 'Zahlungsart');
 check_contains('...with the on-site row', $html, '<td>On-site Payment</td><td class="num">2</td>');
 check_contains('...and the PayPal row', $html, '<td>PayPal</td><td class="num">2</td>');
 
@@ -338,7 +399,7 @@ $cash_only = array_merge($figures, [
 
 $cash_html = $summary->render_html($cash_only);
 
-check_contains('PayPal still reports a zero rather than going blank', $cash_html, '<th>davon PayPal</th><td>0</td>');
+check_contains('PayPal still reports a zero rather than going blank', $cash_html, '0 PayPal');
 check(
     'no empty PayPal row is invented in the breakdown table',
     substr_count($cash_html, '<td>PayPal</td>'),
@@ -357,7 +418,7 @@ $trimmed_html = $summary->render_html($trimmed);
 
 check('the mail still renders', $trimmed_html !== '', true);
 check('with no placeholders left behind', preg_match('/\{[a-z_]+\}/', $trimmed_html), 0);
-check_contains('and the split reads zero', $trimmed_html, '<th>davon PayPal</th><td>0</td>');
+check_contains('and the split reads zero', $trimmed_html, '0 PayPal');
 
 echo "\n-- a day with nothing created --\n";
 

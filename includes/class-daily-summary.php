@@ -117,6 +117,39 @@ class HRB_Daily_Summary {
     }
 
     /**
+     * The times the summary can be scheduled for
+     *
+     * Half-hourly, in 24-hour form. The settings screen renders these as a
+     * <select> rather than an <input type="time">, because that input is drawn
+     * in the browser's own locale — an en-US browser shows 12-hour AM/PM no
+     * matter what the site is set to, and nothing on the page can change it.
+     *
+     * A stored time that is not on the half-hour grid is kept and sorted into
+     * place, so opening the settings screen never quietly moves a send time
+     * somebody set deliberately.
+     *
+     * @since 1.10.1
+     * @param string $current Time currently stored, HH:MM
+     * @return array List of HH:MM strings
+     */
+    public static function send_time_choices($current = '') {
+        $choices = [];
+
+        for ($minutes = 0; $minutes < 24 * 60; $minutes += 30) {
+            $choices[] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+        }
+
+        $current = self::normalize_time($current);
+
+        if ('' !== $current && !in_array($current, $choices, true)) {
+            $choices[] = $current;
+            sort($choices);
+        }
+
+        return $choices;
+    }
+
+    /**
      * Which calendar day should a run at this moment report on?
      *
      * The reported day is the one that ended at the most recent occurrence of
@@ -703,8 +736,8 @@ class HRB_Daily_Summary {
             '{no_show_bookings}'    => (string) (isset($status['no_show']) ? $status['no_show'] : 0),
             '{hours_booked}'        => $this->format_hours($figures['hours']),
             '{total_revenue}'       => hrb_format_amount($figures['value']),
-            '{payments_received}'   => hrb_format_amount($figures['collected'])
-                . ' (' . (int) $figures['collected_count'] . ')',
+            '{payments_received}'   => hrb_format_amount($figures['collected']),
+            '{payments_count}'      => (string) (int) $figures['collected_count'],
             '{outstanding}'         => hrb_format_amount($figures['outstanding']),
             '{cancellation_fees}'   => hrb_format_amount($figures['cancellation_fees']),
             '{onsite_bookings}'     => (string) $channels['onsite']['bookings'],

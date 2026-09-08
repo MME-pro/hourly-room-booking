@@ -1020,13 +1020,52 @@ class HRB_Booking_Manager {
             }
             
             if ($has_changes) {
-                $this->send_booking_notification($booking_id, 'booking_modified');
+                // Cancelling from the edit form is a status change like any
+                // other as far as this block is concerned, which is how a
+                // cancellation went out as "your booking has been modified" -
+                // and, when a fee had just been charged, without the fee, the
+                // bank details or the invoice.
+                $this->send_booking_notification(
+                    $booking_id,
+                    self::notification_event_for_change(
+                        $booking->status,
+                        isset($data['status']) ? $data['status'] : $booking->status
+                    )
+                );
             }
         }
         
         return true;
     }
     
+    /**
+     * Which notification a booking change should send
+     *
+     * A booking that has just been cancelled gets the cancellation letter, not
+     * the "your booking has been modified" one - however the cancellation was
+     * made. Changing the status on the edit form and pressing the Cancel action
+     * are the same thing to the customer.
+     *
+     * Anything else that changed - a new room, a new time, a different price -
+     * is a modification.
+     *
+     * @since 1.10.1
+     * @param string $old_status Status the booking had
+     * @param string $new_status Status it is being given
+     * @return string Notification event name
+     */
+    public static function notification_event_for_change($old_status, $new_status) {
+        $old = strtolower(trim((string) $old_status));
+        $new = strtolower(trim((string) $new_status));
+
+        // Only the transition into cancelled counts: editing a booking that was
+        // already cancelled is still a modification.
+        if ('cancelled' === $new && 'cancelled' !== $old) {
+            return 'booking_cancelled';
+        }
+
+        return 'booking_modified';
+    }
     /**
      * Cancel booking
      */
