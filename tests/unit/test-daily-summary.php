@@ -291,7 +291,6 @@ foreach ([
     '{onsite_count}',
     '{onsite_sum}',
     '{summary_table_rows}',
-    '{unpaid_booking_rows}',
 ] as $token) {
     check_contains("it carries {$token}", $bundled['html_content'], $token);
 }
@@ -365,9 +364,10 @@ check_contains('one cancellation', $html, '>1<');
 check_contains('two are paying on site', $html, '160,00 €');
 
 // The chase list names the one who has not paid, and nobody else.
-check_contains('the customer who still owes is named', $html, 'Hans Müller');
-check('nobody who paid is on the chase list', strpos($html, 'Erika Mustermann'), false);
-check('nor is the cancelled booking', strpos($html, 'Jonas Weber'), false);
+// No customer name appears in the bundled summary any more - it is all
+// figures - so the mail cannot leak one by accident.
+check('no customer is named in the mail', strpos($html, 'Hans Müller'), false);
+check('...not even one who has paid', strpos($html, 'Erika Mustermann'), false);
 
 // The cards and the table are two readings of one tally, so a figure that
 // appears in both must appear twice and not disagree.
@@ -511,7 +511,10 @@ $trimmed_html = $summary->render_html($trimmed);
 
 check('the mail still renders', $trimmed_html !== '', true);
 check('with no placeholders left behind', preg_match('/\{[a-z_]+\}/', $trimmed_html), 0);
-check_contains('and the bar falls back to an empty track', $trimmed_html, '#eceef1');
+// The channels are what the PayPal figure is read from, so losing them must
+// show a zero rather than an error or a blank card.
+check_contains('the cards are all still there', $trimmed_html, 'Vor-Ort-Zahlungen');
+check_contains('and the PayPal figure reads zero', $trimmed_html, '0,00 €');
 
 echo "\n-- a day with nothing created --\n";
 
@@ -538,9 +541,15 @@ check('...with no placeholders left over', preg_match('/\{[a-z_]+\}/', $empty_ht
 
 echo "\n-- escaping --\n";
 
-// The booking list prints names, rooms and references straight from the
-// database, which is where a customer's own typing ends up.
-$injected = $summary->render_html(array_merge($empty_day, [
+// The bundled template stopped printing the booking list in 1.11.2, but
+// {unpaid_booking_rows} still ships and a site's own template may still use
+// it — and it is the only part of the summary that prints anything a customer
+// typed. So the renderer is exercised directly rather than through the mail.
+$renderer = new ReflectionMethod('HRB_Daily_Summary', 'render_unpaid_rows');
+$renderer->setAccessible(true);
+
+$injected = $renderer->invoke($summary, [
+    'date'     => '2026-09-04',
     'bookings' => [[
         'reference' => '<img src=x onerror=alert(1)>',
         'customer'  => '<script>alert(1)</script>',
@@ -554,8 +563,9 @@ $injected = $summary->render_html(array_merge($empty_day, [
         'stands'    => true,
         'paid'      => false,
     ]],
-]));
+]);
 
+check('the row was rendered at all', '' !== $injected, true);
 check('a customer name is escaped', strpos($injected, '<script>alert(1)</script>') === false, true);
 check('so is a booking reference', strpos($injected, '<img src=x') === false, true);
 check('and a room name', strpos($injected, '"><b>bold</b>') === false, true);

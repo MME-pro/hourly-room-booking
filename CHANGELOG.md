@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2] - 2026-09-10
+
+### Removed
+- **The "Noch einzuziehen" list is gone from the daily summary.** The mail now ends with the labelled table; the figures it carried are still there as *Barzahler*. `{unpaid_booking_rows}` and its renderer still ship, so a template that was edited to keep the list is unaffected.
+
+### Note
+- No customer name appears in the bundled summary any more — it is figures only. The escaping test that used to run through that list now exercises the renderer directly, so the coverage did not go with it.
 ## [1.11.1] - 2026-09-10
 
 ### Changed
