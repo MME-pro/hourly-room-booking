@@ -1274,8 +1274,25 @@ function initializeCalendar() {
         // Overlapping bookings sit strictly side by side instead of the later
         // one being drawn over the earlier: a half-covered card is unreadable.
         slotEventOverlap: false,
+        // Seven columns on a phone leave about 48px each, so a third
+        // overlapping booking would be a 15px sliver. Past the cap the
+        // rest become a "+n more" link, which is readable and taps
+        // through to them. A desktop column has room for all of them.
+        views: hrbCalMobile ? {
+            timeGridWeek: { eventMaxStack: 1 },
+            timeGridDay:  { eventMaxStack: 3 }
+        } : {},
         events: function(info, successCallback, failureCallback) {
             fetchCalendarEvents(info.start, info.end, successCallback, failureCallback);
+        },
+        eventsSet: function() {
+            hrbFitEventsSoon();
+        },
+        datesSet: function() {
+            hrbFitEventsSoon();
+        },
+        windowResize: function() {
+            hrbFitEventsSoon();
         },
         eventDidMount: function(info) {
             // Set data-type attribute for events
@@ -1445,6 +1462,7 @@ function initializeCalendar() {
     });
 
     calendar.render();
+    hrbWatchCalendarLayout(calendarEl);
     if (window.innerWidth <= 782) {
         document.querySelectorAll('.calendar-view-btn').forEach(function(b){
             b.classList.toggle('active', b.getAttribute('data-view') === 'listWeek');
@@ -1463,6 +1481,74 @@ function initializeCalendar() {
     }
 }
 
+/**
+ * Trim booking cards that are sharing a column.
+ *
+ * How wide a card ends up depends on how many bookings overlap it, which CSS
+ * cannot see — three at once on a phone leaves about 90px each, and the full
+ * card wraps into one letter per line. So the width is measured after layout
+ * and the card is tagged; admin.css hides the lower-priority rows from there.
+ *
+ * Only phones are tagged: on a desktop even four side by side have room.
+ */
+function hrbFitEvents() {
+    var narrow = 170;
+    var tiny   = 120;
+    var phone  = window.innerWidth <= 782;
+
+    document.querySelectorAll('.fc-timegrid-event').forEach(function (el) {
+        var width = el.getBoundingClientRect().width;
+
+        // Phones only. A desktop week column with three overlapping bookings is
+        // just as cramped, but the desktop cards are deliberately left as they
+        // were.
+        el.classList.toggle('hrb-event-narrow', phone && width > 0 && width < narrow);
+        el.classList.toggle('hrb-event-tiny', phone && width > 0 && width < tiny);
+    });
+}
+
+/** Measure once per frame at most, however many changes triggered it. */
+var hrbFitPending = null;
+
+function hrbFitEventsSoon() {
+    if (hrbFitPending) {
+        return;
+    }
+
+    hrbFitPending = window.requestAnimationFrame(function () {
+        hrbFitPending = null;
+        hrbFitEvents();
+
+        // The last event of a batch can be positioned in the same frame this
+        // runs in, which left it untagged. One more pass once the frame has
+        // settled catches it; it is a single deferred call, not a poll.
+        window.setTimeout(hrbFitEvents, 120);
+    });
+}
+
+/**
+ * Re-measure whenever FullCalendar moves an event.
+ *
+ * The render hooks fire before the side-by-side positions are written, so
+ * measuring a frame later is a guess — and on the week view it guessed wrong
+ * and left every card untagged. FullCalendar sets those positions as inline
+ * styles, so watching for style changes catches the actual moment.
+ *
+ * Only style attributes are watched; the tagging itself writes class, so it
+ * cannot retrigger this.
+ */
+function hrbWatchCalendarLayout(el) {
+    if (!el || typeof MutationObserver === 'undefined') {
+        return;
+    }
+
+    new MutationObserver(hrbFitEventsSoon).observe(el, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['style']
+    });
+}
 function fetchCalendarEvents(start, end, successCallback, failureCallback) {
     jQuery.ajax({
         url: ajaxurl,
@@ -1513,6 +1599,7 @@ document.querySelectorAll('.calendar-view-btn').forEach(btn => {
         document.querySelectorAll('.calendar-view-btn').forEach(b => b.classList.remove('active'));
         this.classList.add('active');
         calendar.changeView(this.dataset.view);
+        hrbFitEventsSoon();
     });
 });
 

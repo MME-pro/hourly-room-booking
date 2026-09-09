@@ -2017,3 +2017,80 @@ body.hrb-admin-page {
 .hrb-actions .button .dashicons,
 .hrb-actions .button:hover .dashicons,
 .hrb-actions .button:focus .dashicons { color: #ffffff !important; }
+
+/* ==========================================================================
+   HRB — booking cards that are sharing a column on a phone
+   ==========================================================================
+   A time grid puts overlapping bookings side by side, so three at once on a
+   phone leaves each card about 90px. At that width the full card — customer,
+   room, reference, time, price, extras, status — wrapped into roughly one
+   letter per line and the status badge spilled out of the bottom.
+
+   How wide a card ends up depends on how many bookings overlap it, which CSS
+   cannot know, so hrbFitEvents() in calendar.php measures each card after
+   layout and tags it. Two steps: a narrow card keeps who, when and how much;
+   a very narrow one keeps only who and when. Everything else is one tap away
+   in the booking modal. */
+@media (max-width: 782px) {
+    .fc-timegrid-event.hrb-event-narrow .fc-event-room,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-ref,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-extras,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-badges,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-anon-badge {
+        display: none !important;
+    }
+
+    .fc-timegrid-event.hrb-event-narrow .fc-event-content {
+        padding: 3px 5px;
+    }
+
+    .fc-timegrid-event.hrb-event-narrow .fc-event-row {
+        font-size: 11px;
+        line-height: 1.3;
+        margin: 0;
+    }
+
+    /* The day view lets rows wrap so a long room name fits; a narrow card has
+       no width to wrap into, and wrapping there is what produced the column of
+       single characters. Clip instead. */
+    .fc-timegrid-event.hrb-event-narrow .fc-event-row,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-row span,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-time-part,
+    .fc-timegrid-event.hrb-event-narrow .fc-event-price-part {
+        white-space: nowrap !important;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+    }
+
+    /* Time and price share a line; let them sit apart rather than stack. */
+    .fc-timegrid-event.hrb-event-narrow .fc-event-time-price {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+    }
+
+    .fc-timegrid-event.hrb-event-narrow .fc-event-customer {
+        font-weight: 600;
+    }
+
+    /* The icons cost more width than they earn once the card is this narrow. */
+    .fc-timegrid-event.hrb-event-narrow .fc-event-icon {
+        display: none !important;
+    }
+
+    /* Narrower still: the price goes too, leaving who and when. */
+    .fc-timegrid-event.hrb-event-tiny .fc-event-price-part {
+        display: none !important;
+    }
+
+    .fc-timegrid-event.hrb-event-tiny .fc-event-row {
+        font-size: 10px;
+    }
+
+    /* Padding is worth more as content at this size. */
+    .fc-timegrid-event.hrb-event-tiny .fc-event-content {
+        padding: 2px 4px;
+    }
+}

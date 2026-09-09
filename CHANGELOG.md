@@ -5,6 +5,15 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.4] - 2026-09-10
+
+### Fixed
+- **Overlapping bookings on a phone were unreadable.** Three at once in the day view left each card about 90px wide, and the full card — customer, room, reference, time, price, extras, status — wrapped into roughly one letter per line with the status badge spilling out of the bottom. A card that narrow now shows only what identifies it: customer, time and price down to 170px, customer and time below 120px. Everything else is one tap away in the booking details. A booking that has its column to itself is unchanged.
+- **The week view on a phone shredded into 15px slivers.** Seven columns on a phone leave about 48px each, which no amount of trimming rescues, so the stack is capped there and anything past it becomes a "+n more" link.
+
+### Note
+- How wide a card ends up depends on how many bookings overlap it, which CSS cannot see, so the width is measured in the browser and the card is tagged from there. The measurement watches for the positions FullCalendar writes rather than waiting a fixed moment after render — waiting was a guess, and on the week view it guessed wrong and tagged nothing.
+- Desktop is deliberately untouched. A desktop week column with three overlapping bookings is just as cramped, and can be trimmed the same way if wanted.
 ## [1.11.3] - 2026-09-10
 
 ### Fixed
