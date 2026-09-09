@@ -5,6 +5,10 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.3] - 2026-09-10
+
+### Fixed
+- **A booking card in the calendar showed only its start time.** It read "14:30" for a booking that runs until 17:30, because FullCalendar's `timeText` is just the start in a month cell. The card builds the range from the event's own start and end now, so every view reads "14:30 – 17:30". An event with no end — an all-day block — falls back to what FullCalendar worked out, so nothing renders a dangling dash.
 ## [1.11.2] - 2026-09-10
 
 ### Removed

@@ -1344,12 +1344,22 @@ function initializeCalendar() {
             const customerName = arg.event.extendedProps.customer_name || title.replace(/\s*\([^)]+\)$/, '');
             const roomName = arg.event.extendedProps.room_name || '';
 
-            // Format time text to show proper AM/PM format
-            let timeText = arg.timeText;
-            if (timeText.includes(' - ')) {
-                timeText = timeText.replace(' - ', '-');
-            }
-            // 24-hour format (German) - no AM/PM conversion
+            // arg.timeText is only the start time in a month cell, which left
+            // the card saying "14:30" for a booking that runs until 17:30. The
+            // range is built from the event's own dates instead; an event with
+            // no end (an all-day block) falls back to whatever FullCalendar
+            // worked out.
+            const hhmm = function (date) {
+                if (!date) { return ''; }
+                return ('0' + date.getHours()).slice(-2) + ':' + ('0' + date.getMinutes()).slice(-2);
+            };
+
+            const startText = hhmm(arg.event.start);
+            const endText   = hhmm(arg.event.end);
+
+            let timeText = (startText && endText)
+                ? startText + ' – ' + endText
+                : (arg.timeText || startText);
             
             // Create status badge with appropriate color class
             let statusBadge = '';
