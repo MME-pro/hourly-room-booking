@@ -283,13 +283,14 @@ check_contains('it names the company in the footer', $bundled['html_content'], '
 
 foreach ([
     '{summary_date}',
-    '{total_bookings}',
-    '{hours_booked}',
-    '{payments_received}',
-    '{pending_cancellation_fees}',
-    '{outstanding_bookings}',
-    '{payment_status_rows}',
-    '{day_narrative}',
+    '{appointments_count}',
+    '{appointments_value}',
+    '{paypal_received}',
+    '{cancelled_count}',
+    '{cancellation_fees}',
+    '{onsite_count}',
+    '{onsite_sum}',
+    '{summary_table_rows}',
     '{unpaid_booking_rows}',
 ] as $token) {
     check_contains("it carries {$token}", $bundled['html_content'], $token);
@@ -297,9 +298,13 @@ foreach ([
 
 // Inline styles rather than a <style> block for the parts that must survive:
 // Outlook and most webmail strip the head, and the mail is read on phones.
-check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:26px');
-check_contains('the money owed is split in two', $bundled['html_content'], 'Stornogeb');
-check_contains('and named as such', $bundled['html_content'], 'ohne Stornogeb');
+check_contains('the figures are styled inline', $bundled['html_content'], 'font-size:27px');
+
+// Every figure appears twice by design — once as a card to be glanced at and
+// once in the table to be read — so both have to be in the template.
+check_contains('the cards are there', $bundled['html_content'], 'Vor-Ort-Zahlungen');
+check_contains('and the table under them', $bundled['html_content'], '{summary_table_rows}');
+check_contains('the day is titled', $bundled['html_content'], 'Terminübersicht {summary_date}');
 
 echo "\n-- render_html --\n";
 
@@ -350,21 +355,27 @@ $figures = [
 
 $html = $summary->render_html($figures);
 
+// The fixture is three appointments that stand — two on site (160,00, one of
+// them still to pay) and one PayPal (100,00) — plus one cancelled PayPal
+// booking, which is counted as a cancellation and nowhere else.
 check_contains('the date it covers', $html, '04.09.2026');
-check_contains('the number of bookings created', $html, '>4<');
-check_contains('the money received', $html, '120,00 €');
-check_contains('the hours booked', $html, '7 Std.');
-check_contains('payments received', $html, '120,00 €');
-// The pending figure in the finance list and the rows underneath it come
-// from the same booking rows, so they can never disagree: one unpaid
-// on-site booking of 80,00 EUR, listed once and totalled once.
-check_contains('the money still to collect is stated', $html, 'paying on site');
-check_contains('and the customer behind it is named', $html, 'Hans Müller');
+check_contains('three appointments stand', $html, '>3<');
+check_contains('worth 260,00 between them', $html, '260,00 €');
+check_contains('one cancellation', $html, '>1<');
+check_contains('two are paying on site', $html, '160,00 €');
+
+// The chase list names the one who has not paid, and nobody else.
+check_contains('the customer who still owes is named', $html, 'Hans Müller');
 check('nobody who paid is on the chase list', strpos($html, 'Erika Mustermann'), false);
 check('nor is the cancelled booking', strpos($html, 'Jonas Weber'), false);
-// Rooms and the per-method table left the mail in 1.10.4; what replaced
-// them is the written summary, checked below.
-check_contains('the payment-status breakdown', $html, 'Paid');
+
+// The cards and the table are two readings of one tally, so a figure that
+// appears in both must appear twice and not disagree.
+check(
+    'the on-site total is shown in both the card and the table',
+    substr_count($html, '160,00 €') >= 2,
+    true
+);
 check_contains('the company name', $html, 'Bookingsuite');
 check('every placeholder was filled', preg_match('/\{[a-z_]+\}/', $html), 0);
 check('the mail is a complete document', substr($html, 0, 15), '<!DOCTYPE html>');
@@ -442,15 +453,15 @@ echo "\n-- the split in the email --\n";
 
 // Assert on the figures and labels the reader sees, not on the markup around
 // them — pinning table cells is what made these break on every redesign.
-check_contains('the day is described in words', $html, 'appointments on');
-check_contains('...with what they are worth', $html, 'worth');
-check_contains('...and what has been paid', $html, 'already been paid via');
+check_contains('the figures are also written out with labels', $html, 'Appointments');
+check_contains('...including what came in by PayPal', $html, 'Paid via PayPal');
+check_contains('...and who pays on site', $html, 'Paying on site');
 
 // Money owed is shown as two separate figures - a room somebody still has to
 // pay for is chased differently from a penalty on a booking that is gone - so
 // the mail must never present them as one lump.
-check_contains('outstanding booking money has its own card', $html, 'ohne Stornogeb');
-check_contains('and outstanding fees theirs', $html, 'Stornogeb');
+check_contains('cancellations have their own card', $html, 'Stornierungen');
+check_contains('and the fees theirs', $html, 'Stornogeb');
 
 // Every method carries its own colour, chosen by the method and not by where
 // it happens to land in the table.
@@ -485,7 +496,7 @@ $cash_html = $summary->render_html($cash_only);
 
 // The four cards are always present, whatever the day held, so the mail has
 // the same shape every morning.
-foreach (['Termine', 'Zahlungseingang', 'Stornogeb', 'Offen'] as $card) {
+foreach (['Termine', 'Zahlungseingang', 'Stornogeb', 'Vor-Ort-Zahlungen'] as $card) {
     check_contains("the {$card} card is there on a quiet day", $cash_html, $card);
 }
 
@@ -520,7 +531,8 @@ $empty_day = [
 
 $empty_html = $summary->render_html($empty_day);
 
-check_contains('says so instead of rendering an empty table', $empty_html, 'No bookings were created on this day.');
+check_contains('a day with nothing on it still shows the cards', $empty_html, 'Termine');
+check_contains('...reading zero', $empty_html, '>0<');
 check_contains('...and still shows the date', $empty_html, '04.09.2026');
 check('...with no placeholders left over', preg_match('/\{[a-z_]+\}/', $empty_html), 0);
 

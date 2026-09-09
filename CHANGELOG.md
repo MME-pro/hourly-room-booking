@@ -5,6 +5,14 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.1] - 2026-09-10
+
+### Changed
+- **The daily summary was rebuilt to the supplied design.** A gold title band carrying "Terminübersicht {date}", then five figure cards — appointments (with their total value), money in through PayPal, cancellations, cancellation fees, and the on-site payers with their count and sum — and below them the same figures written out as a labelled table: Terminanzahl, Zahlungen über PayPal, Stornierungen, Stornogebühr, Barzahler. The list of who still has to pay follows underneath.
+- **The prose paragraphs were dropped.** The table now carries what they said, and reading the same figures three times over made the mail longer without making it clearer. The list naming who owes money stays — nothing else carries those names.
+
+### Added
+- **`HRB_Daily_Summary::day_tally()`** counts the day once and hands the same numbers to the cards, the table and the sentences, so the three cannot drift apart. New placeholders drawn from it: `{appointments_count}`, `{appointments_value}`, `{cancelled_count}`, `{onsite_count}`, `{onsite_sum}`, `{paypal_count}`, `{paypal_sum}` and `{summary_table_rows}`.
 ## [1.11.0] - 2026-09-10
 
 ### Changed

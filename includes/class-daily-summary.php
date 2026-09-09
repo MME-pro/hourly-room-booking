@@ -794,6 +794,8 @@ class HRB_Daily_Summary {
         // hrb_daily_summary_figures filter on the way here and a site could
         // hand back a trimmed array. Missing channels read as zero rather
         // than blowing up the one mail nobody is watching being sent.
+        $tally = self::day_tally($figures);
+
         $blank    = ['bookings' => 0, 'value' => 0.0, 'collected' => 0.0];
         $channels = isset($figures['channels']) ? (array) $figures['channels'] : [];
 
@@ -832,6 +834,14 @@ class HRB_Daily_Summary {
             '{other_bookings}'      => (string) $channels['other']['bookings'],
             '{other_revenue}'       => hrb_format_amount($channels['other']['value']),
             '{other_received}'      => hrb_format_amount($channels['other']['collected']),
+            '{appointments_count}'  => (string) $tally['appointments'],
+            '{appointments_value}'  => hrb_format_amount($tally['value']),
+            '{cancelled_count}'     => (string) $tally['cancelled'],
+            '{onsite_count}'        => (string) $tally['onsite'],
+            '{onsite_sum}'          => hrb_format_amount($tally['onsite_sum']),
+            '{paypal_count}'        => (string) $tally['paypal'],
+            '{paypal_sum}'          => hrb_format_amount($tally['paypal_sum']),
+            '{summary_table_rows}'  => $this->render_summary_table($figures),
             '{payment_method_rows}' => $this->render_payment_method_rows($figures),
             '{day_narrative}'       => $this->render_narrative($figures),
             '{unpaid_booking_rows}' => $this->render_unpaid_rows($figures),
@@ -1061,6 +1071,129 @@ class HRB_Daily_Summary {
                 . '</td>'
                 . '<td align="right" width="56" style="padding:7px 0;font-size:13px;color:#6b7280;white-space:nowrap;">'
                 . $share . '&nbsp;%'
+                . '</td>'
+                . '</tr>';
+        }
+
+        return $html;
+    }
+    /**
+     * The day's diary, counted once
+     *
+     * Every figure the summary shows comes from here rather than from its own
+     * query, so the cards, the table and the sentences cannot drift apart. An
+     * appointment "stands" if it was not cancelled or marked a no-show; a
+     * cancelled one is counted as a cancellation and nowhere else.
+     *
+     * @since 1.11.1
+     * @param array $figures Output of collect()
+     * @return array
+     */
+    public static function day_tally(array $figures) {
+        $tally = [
+            'appointments' => 0,
+            'value'        => 0.0,
+            'cancelled'    => 0,
+            'cancelled_value' => 0.0,
+            'onsite'       => 0,
+            'onsite_sum'   => 0.0,
+            'paypal'       => 0,
+            'paypal_sum'   => 0.0,
+            'other'        => 0,
+            'other_sum'    => 0.0,
+            'unpaid'       => 0,
+            'unpaid_sum'   => 0.0,
+        ];
+
+        $bookings = isset($figures['bookings']) ? (array) $figures['bookings'] : [];
+
+        foreach ($bookings as $booking) {
+            $amount = isset($booking['amount']) ? (float) $booking['amount'] : 0.0;
+
+            if (empty($booking['stands'])) {
+                $tally['cancelled']++;
+                $tally['cancelled_value'] += $amount;
+                continue;
+            }
+
+            $tally['appointments']++;
+            $tally['value'] += $amount;
+
+            $channel = isset($booking['channel']) ? $booking['channel'] : 'other';
+            if (!isset($tally[$channel])) {
+                $channel = 'other';
+            }
+
+            $tally[$channel]++;
+            $tally[$channel . '_sum'] += $amount;
+
+            if (empty($booking['paid'])) {
+                $tally['unpaid']++;
+                $tally['unpaid_sum'] += $amount;
+            }
+        }
+
+        return $tally;
+    }
+    /**
+     * The day as a labelled table
+     *
+     * The same figures as the cards above it, written out with a label each.
+     * Cards are read at a glance and this is read line by line; both come from
+     * day_tally(), so they always agree.
+     *
+     * @since 1.11.1
+     * @param array $figures
+     * @return string HTML table rows
+     */
+    private function render_summary_table(array $figures) {
+        $tally    = self::day_tally($figures);
+        $channels = isset($figures['channels']) ? $figures['channels'] : [];
+
+        $paypal_in = isset($channels['paypal']['collected']) ? (float) $channels['paypal']['collected'] : 0.0;
+
+        $rows = [
+            [
+                __('Appointments', 'hourly-room-booking'),
+                (string) $tally['appointments'],
+            ],
+            [
+                __('Paid via PayPal', 'hourly-room-booking'),
+                hrb_format_amount($paypal_in),
+            ],
+            [
+                __('Cancellations', 'hourly-room-booking'),
+                (string) $tally['cancelled'],
+            ],
+            [
+                __('Cancellation fees', 'hourly-room-booking'),
+                hrb_format_amount(isset($figures['cancellation_fees']) ? $figures['cancellation_fees'] : 0),
+            ],
+            [
+                __('Paying on site', 'hourly-room-booking'),
+                sprintf(
+                    /* translators: 1: number of appointments, 2: their total value */
+                    __('%1$s, totalling %2$s', 'hourly-room-booking'),
+                    $tally['onsite'],
+                    hrb_format_amount($tally['onsite_sum'])
+                ),
+            ],
+        ];
+
+        $html = '';
+        foreach ($rows as $index => $row) {
+            list($label, $value) = $row;
+
+            $last = ($index === count($rows) - 1);
+
+            $html .= '<tr>'
+                . '<td style="padding:13px 16px 13px 0;font-size:15px;color:#3c4149;'
+                . ($last ? '' : 'border-bottom:1px solid #e6e8eb;') . '">'
+                . esc_html($label)
+                . '</td>'
+                . '<td align="right" style="padding:13px 0;font-size:15px;font-weight:600;color:#1f2328;'
+                . 'white-space:nowrap;' . ($last ? '' : 'border-bottom:1px solid #e6e8eb;') . '">'
+                . esc_html($value)
                 . '</td>'
                 . '</tr>';
         }

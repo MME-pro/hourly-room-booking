@@ -4220,3 +4220,21 @@ msgid "%1$s appointment for this day was cancelled (%2$s)."
 msgid_plural "%1$s appointments for this day were cancelled (%2$s)."
 msgstr[0] "%1$s Termin an diesem Tag wurde storniert (%2$s)."
 msgstr[1] "%1$s Termine an diesem Tag wurden storniert (%2$s)."
+
+msgid "Appointments"
+msgstr "Terminanzahl"
+
+msgid "Paid via PayPal"
+msgstr "Zahlungen über PayPal"
+
+msgid "Cancellations"
+msgstr "Stornierungen"
+
+msgid "Cancellation fees"
+msgstr "Stornogebühr"
+
+msgid "Paying on site"
+msgstr "Barzahler"
+
+msgid "%1$s, totalling %2$s"
+msgstr "%1$s in Höhe von %2$s"
