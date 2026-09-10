@@ -236,7 +236,7 @@ $currency_symbol = hrb_get_currency_symbol();
                                 <?php endif; ?>
                             </td>
                             <td class="column-booking" data-label="<?php esc_attr_e('Booking', 'hourly-room-booking'); ?>">
-                                <a href="<?php echo admin_url('admin.php?page=hrb-bookings&action=edit&booking_id=' . $payment->booking_id); ?>">
+                                <a href="<?php echo admin_url('admin.php?page=hrb-bookings&action=edit&id=' . $payment->booking_id); ?>">
                                     #<?php echo $payment->booking_id; ?>
                                 </a>
                                 <div class="booking-details">

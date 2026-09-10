@@ -2566,7 +2566,7 @@ class HRB_Admin {
                 'room_name'     => (string) $b->room_name,
                 'date'          => date_i18n($date_fmt, strtotime($b->booking_date)),
                 'time'          => date_i18n('H:i', strtotime($b->start_time)) . ' – ' . date_i18n('H:i', strtotime($b->end_time)),
-                'edit_url'      => admin_url('admin.php?page=hrb-bookings&action=edit&booking_id=' . (int) $b->id),
+                'edit_url'      => admin_url('admin.php?page=hrb-bookings&action=edit&id=' . (int) $b->id),
             );
         }
 

@@ -125,7 +125,7 @@ $selected_room = isset($_GET['room_id']) ? intval($_GET['room_id']) : 0;
         </div>
         <div class="hrb-modal-footer">
             <button type="button" class="button" onclick="closeBookingModal()"><?php _e('Close', 'hourly-room-booking'); ?></button>
-            <button type="button" class="button button-primary" id="edit-booking-btn" onclick="editBooking()">
+            <button type="button" class="button button-primary" id="edit-booking-btn">
                 <?php _e('Edit Booking', 'hourly-room-booking'); ?>
             </button>
         </div>
@@ -1661,7 +1661,16 @@ function closeBookingModal() {
 }
 
 function editBooking(bookingId) {
-    window.location.href = '<?php echo admin_url('admin.php?page=hrb-bookings&action=edit&booking_id='); ?>' + bookingId;
+    // The bookings screen reads $_GET['id']; sending booking_id= left it at 0,
+    // so the edit form never opened and the page fell through to the list.
+    // This is the same URL the Edit link in the bookings list uses.
+    bookingId = parseInt(bookingId, 10);
+
+    if (!bookingId) {
+        return;
+    }
+
+    window.location.href = '<?php echo admin_url('admin.php?page=hrb-bookings&action=edit&id='); ?>' + bookingId;
 }
 
 function loadCalendarStats() {
