@@ -3,7 +3,7 @@
  * Plugin Name: Hourly Room Booking System
  * Plugin URI: https://mme-pro.de
  * Description: Professional room booking system with hourly slots, payment integration, and comprehensive management features.
- * Version: 1.12.0
+ * Version: 1.13.0
  * Author: MME-Pro Dev Team
  * Author URI: https://mme-pro.de
  * Requires at least: 5.0
@@ -48,7 +48,7 @@ if (defined('HRB_VERSION')) {
  * These constants are used throughout the plugin for consistency
  * and to avoid magic strings in the codebase.
  */
-define('HRB_VERSION', '1.12.0');
+define('HRB_VERSION', '1.13.0');
 define('HRB_MIN_PHP_VERSION', '7.4');
 define('HRB_MIN_WP_VERSION', '5.0');
 define('HRB_PLUGIN_FILE', __FILE__);
@@ -110,6 +110,8 @@ final class HourlyRoomBooking {
         'HRB_Currency_Manager'    => 'class-currency-manager.php',
         'HRB_Extra_Stock_Manager' => 'class-extra-stock-manager.php',
         'HRB_Status_Constants'    => 'class-status-constants.php',
+        'HRB_Capabilities'        => 'class-capabilities.php',
+        'HRB_Report_Exporter'     => 'class-report-exporter.php',
         'HRB_Extras'              => 'class-extras.php',
         'HRB_Invoice_Generator'   => 'class-invoice-generator.php',
         'HRB_PDF_Generator'       => 'class-pdf-generator.php',
@@ -379,6 +381,7 @@ final class HourlyRoomBooking {
             $this->components['ajax_handler'] = HRB_Ajax_Handler::getInstance();
             $this->components['updater']      = HRB_Updater::getInstance();
             $this->components['daily_summary'] = HRB_Daily_Summary::getInstance();
+            $this->components['report_exporter'] = HRB_Report_Exporter::getInstance();
             
             // Components initialized successfully
             do_action('hrb_components_loaded', $this->components);
@@ -746,6 +749,7 @@ final class HourlyRoomBooking {
         wp_clear_scheduled_hook('hrb_cleanup_incomplete_payments');
         wp_clear_scheduled_hook('hrb_daily_summary');
         wp_clear_scheduled_hook('hrb_send_arrival_reminders');
+        wp_clear_scheduled_hook(HRB_Updater::CRON_HOOK);
         
         // Clear rewrite rules
         flush_rewrite_rules();

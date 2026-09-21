@@ -4232,3 +4232,51 @@ msgstr "%1$s in Höhe von %2$s"
 
 msgid "Invalid duration. Must be between 2 and %d hours"
 msgstr "Ungültige Dauer. Muss zwischen 2 und %d Stunden liegen"
+
+msgid "Revenue (%s)"
+msgstr "Umsatz (%s)"
+
+msgid "Number of additional people beyond the base (max 10)"
+msgstr "Anzahl zusätzlicher Personen über die Basis hinaus (max. 10)"
+
+msgid "Current booking: %1$s, %2$s hours. Add below what the customer wants on top; it becomes a separate additional charge."
+msgstr "Aktuelle Buchung: %1$s, %2$s Stunden. Ergänzen Sie unten, was der Kunde zusätzlich möchte; daraus wird eine separate Zusatzbuchung."
+
+msgid "Room Booking Admin"
+msgstr "Raumbuchung Administrator"
+
+msgid "Room Booking Employee"
+msgstr "Raumbuchung Mitarbeiter"
+
+msgid "Report period"
+msgstr "Berichtszeitraum"
+
+msgid "Summary"
+msgstr "Zusammenfassung"
+
+msgid "Metric"
+msgstr "Kennzahl"
+
+msgid "Total bookings"
+msgstr "Buchungen gesamt"
+
+msgid "Unique customers"
+msgstr "Verschiedene Kunden"
+
+msgid "Average duration (hours)"
+msgstr "Durchschnittliche Dauer (Stunden)"
+
+msgid "Total revenue"
+msgstr "Gesamtumsatz"
+
+msgid "Average booking value"
+msgstr "Durchschnittlicher Buchungswert"
+
+msgid "Per room"
+msgstr "Pro Raum"
+
+msgid "Per day"
+msgstr "Pro Tag"
+
+msgid "Every 5 minutes"
+msgstr "Alle 5 Minuten"

@@ -1540,10 +1540,12 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                 <div class="hrb-details-section">
                     <h3><?php _e('Payment Information', 'hourly-room-booking'); ?></h3>
                     <table class="widefat">
+                        <?php if (hrb_can_view_financials()): ?>
                         <tr>
                             <th><?php _e('Amount', 'hourly-room-booking'); ?></th>
                             <td><?php echo hrb_format_amount($booking->total_amount); ?></td>
                         </tr>
+                        <?php endif; ?>
                         <tr>
                             <th><?php _e('Payment Status', 'hourly-room-booking'); ?></th>
                             <td>
@@ -1587,6 +1589,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     </table>
                 </div>
 
+                <?php if (hrb_can_view_financials()): ?>
                 <div class="hrb-details-section">
                     <h3><?php _e('Pricing Breakdown', 'hourly-room-booking'); ?></h3>
                     <table class="widefat">
@@ -1662,6 +1665,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         <?php endif; ?>
                     </table>
                 </div>
+                <?php endif; ?>
 
                 <?php if (!empty($booking->special_requests)): ?>
                     <div class="hrb-details-section">
@@ -1683,6 +1687,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             </div>
 
             <!-- Price Summary - Full Width Section -->
+            <?php if (hrb_can_view_financials()): ?>
             <div class="hrb-details-section hrb-price-summary-fullwidth">
                 <h3><?php _e('Price Summary', 'hourly-room-booking'); ?></h3>
                 <div class="hrb-summary-content">
@@ -1970,6 +1975,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         </div>
                     </div>
                 </div>
+            <?php endif; ?>
 
             <div class="hrb-booking-actions">
                 <?php if (current_user_can('hrb_manage_bookings')): ?>
@@ -1982,7 +1988,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                 </a>
                 <?php endif; ?>
 
-                <?php if (current_user_can('hrb_manage_bookings')): ?>
+                <?php // An invoice is a money document, so it is not offered to an Employee. ?>
+                <?php if (hrb_can_view_financials()): ?>
                     <?php 
                     $invoice_generator = HRB_Invoice_Generator::getInstance();
                     $existing_invoice = $invoice_generator->get_invoice_by_booking($booking->id);
@@ -2153,7 +2160,12 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <th><label for="extra_people"><?php _e('Extra People', 'hourly-room-booking'); ?></label></th>
                             <td>
                                 <input type="number" name="extra_people" id="extra_people" value="<?php echo esc_attr($booking->extra_people ?? 0); ?>" min="0" max="10" class="small-text">
+                                <?php // How many people is desk work; what they cost is not. ?>
+                                <?php if (hrb_can_view_financials()): ?>
                                 <p class="description"><?php printf(__('Number of additional people beyond the base (%s per extra person, max 10)', 'hourly-room-booking'), hrb_format_amount(15)); ?></p>
+                                <?php else: ?>
+                                <p class="description"><?php _e('Number of additional people beyond the base (max 10)', 'hourly-room-booking'); ?></p>
+                                <?php endif; ?>
                             </td>
                         </tr>
                         <tr>
@@ -2231,6 +2243,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                 <p class="description"><?php _e('Use this field to add notes about extra payments, services, or any other information for internal use.', 'hourly-room-booking'); ?></p>
                             </td>
                         </tr>
+                        <?php if (hrb_can_view_financials()): ?>
                         <tr>
                             <th><label><?php _e('Price Summary', 'hourly-room-booking'); ?></label></th>
                             <td>
@@ -2257,6 +2270,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                 </div>
                             </td>
                         </tr>
+                        <?php endif; ?>
                     </table>
                 </div>
 
@@ -2464,7 +2478,12 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <th><label for="extra_people"><?php _e('Extra People', 'hourly-room-booking'); ?></label></th>
                             <td>
                                 <input type="number" name="extra_people" id="extra_people" value="0" min="0" max="10" class="small-text">
+                                <?php // How many people is desk work; what they cost is not. ?>
+                                <?php if (hrb_can_view_financials()): ?>
                                 <p class="description"><?php printf(__('Number of additional people beyond the base (%s per extra person, max 10)', 'hourly-room-booking'), hrb_format_amount(15)); ?></p>
+                                <?php else: ?>
+                                <p class="description"><?php _e('Number of additional people beyond the base (max 10)', 'hourly-room-booking'); ?></p>
+                                <?php endif; ?>
                             </td>
                         </tr>
                                <tr>
@@ -2488,6 +2507,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                        <p class="description"><?php _e('Use this field to add notes about extra payments, services, or any other information for internal use.', 'hourly-room-booking'); ?></p>
                                    </td>
                                </tr>
+                               <?php if (hrb_can_view_financials()): ?>
                                <tr>
                                    <th><label><?php _e('Price Summary', 'hourly-room-booking'); ?></label></th>
                                    <td>
@@ -2508,6 +2528,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                        </div>
                                    </td>
                                </tr>
+                               <?php endif; ?>
                            </table>
                        </div>
 
@@ -2592,6 +2613,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         </div>
         
         <script>
+        // Whether this user may be shown money at all. See HRB_Capabilities.
+        var hrbCanViewFinancials = <?php echo hrb_can_view_financials() ? 'true' : 'false'; ?>;
         jQuery(document).ready(function($) {
 
             // Manual price: the whole row is only relevant for on-site/cash payment.
@@ -2727,6 +2750,10 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             
             // Price calculation and summary display
                 window.updatePriceSummary = function() {
+                // An Employee is never shown money, and the summary row they
+                // would be written into is not on the page for them.
+                if (!hrbCanViewFinancials) { return; }
+
                 var roomId = $('#room_id').val();
                 var duration = $('#duration').val();
                 var extraPeople = parseInt($('#extra_people').val()) || 0;
@@ -3357,8 +3384,13 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         ?>
         <div class="hrb-edit-section" style="max-width:720px; background:#fff; border:1px solid #e1e5e9; border-radius:8px; padding:20px; margin-top:15px;">
             <p class="description">
+                <?php if (hrb_can_view_financials()): ?>
                 <?php printf(__('Current booking: %1$s, %2$s hours, total %3$s. Add below what the customer wants on top; it becomes a separate additional charge.', 'hourly-room-booking'),
                     esc_html($adj_room_obj ? $adj_room_obj->name : ''), esc_html($booking->total_hours), hrb_format_amount((float) $booking->total_amount)); ?>
+                <?php else: ?>
+                <?php printf(__('Current booking: %1$s, %2$s hours. Add below what the customer wants on top; it becomes a separate additional charge.', 'hourly-room-booking'),
+                    esc_html($adj_room_obj ? $adj_room_obj->name : ''), esc_html($booking->total_hours)); ?>
+                <?php endif; ?>
             </p>
             <form method="POST" action="<?php echo admin_url('admin.php?page=hrb-bookings&action=adjust&id=' . $booking->id); ?>">
                 <?php wp_nonce_field('hrb_admin_action', 'hrb_nonce'); ?>
@@ -3382,7 +3414,9 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         <th><label for="adj_people"><?php _e('Additional people', 'hourly-room-booking'); ?></label></th>
                         <td><input type="number" name="adj_people" id="adj_people" min="0" max="<?php echo esc_attr($adj_people_max); ?>" step="1" value="0" class="small-text">
                             <p class="description">
+                                <?php if (hrb_can_view_financials()): ?>
                                 <?php printf(__('%s per additional person.', 'hourly-room-booking'), hrb_format_amount(15)); ?>
+                                <?php endif; ?>
                                 <?php printf(__('Max. %d more (10 extra people per booking).', 'hourly-room-booking'), $adj_people_max); ?>
                             </p></td>
                     </tr>
@@ -3405,7 +3439,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                 $adj_shown = true; ?>
                                 <label style="display:block; margin-bottom:6px;">
                                     <input type="checkbox" name="adj_extras[]" value="<?php echo esc_attr($ae['id']); ?>">
-                                    <?php echo esc_html($ae['name']); ?> (+<?php echo hrb_format_amount((float) $ae['price']); ?>)
+                                    <?php echo esc_html($ae['name']); ?><?php if (hrb_can_view_financials()): ?> (+<?php echo hrb_format_amount((float) $ae['price']); ?>)<?php endif; ?>
                                     <?php if (!empty($ae['track_stock'])): ?>
                                         <small style="color:#777;">&mdash; <?php printf(__('%d available', 'hourly-room-booking'), (int) $ae['available_quantity']); ?></small>
                                     <?php endif; ?>
@@ -3416,6 +3450,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <?php endif; ?>
                         </td>
                     </tr>
+                    <?php if (hrb_can_view_financials()): ?>
                     <tr>
                         <th><label for="adj_manual_price"><?php _e('Manual price for this adjustment (optional)', 'hourly-room-booking'); ?></label></th>
                         <td>
@@ -3423,6 +3458,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <p class="description"><?php _e('If set, this exact amount is charged for the adjustment instead of the calculated sum.', 'hourly-room-booking'); ?></p>
                         </td>
                     </tr>
+                    <?php endif; ?>
                     <tr>
                         <th><label for="adj_payment_method"><?php _e('Pay adjustment via', 'hourly-room-booking'); ?></label></th>
                         <td>
@@ -3432,6 +3468,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             </select>
                         </td>
                     </tr>
+                    <?php if (hrb_can_view_financials()): ?>
                     <tr>
                         <th><?php _e('Adjustment total', 'hourly-room-booking'); ?></th>
                         <td>
@@ -3443,6 +3480,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             </div>
                         </td>
                     </tr>
+                    <?php endif; ?>
                 </table>
                 <p><input type="submit" class="button button-primary" value="<?php esc_attr_e('Add adjustment', 'hourly-room-booking'); ?>"></p>
             </form>
@@ -3477,8 +3515,14 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     if (ec>0) lines.push('<?php echo esc_js(__('Extras', 'hourly-room-booking')); ?>: '+money(ec));
                     if (manual != null && !isNaN(manual)) lines.push('<?php echo esc_js(__('Manual price', 'hourly-room-booking')); ?>: '+money(manual));
                     if (fee>0) lines.push('PayPal 3%: '+money(fee));
-                    el('adj-summary-lines').innerHTML = lines.length ? lines.join('<br>') : '<?php echo esc_js(__('Nothing added yet.', 'hourly-room-booking')); ?>';
-                    el('adj-summary-total').textContent = money(grand);
+                    // The summary is not on the page for an Employee, who is
+                    // never shown what an adjustment costs.
+                    var linesEl = el('adj-summary-lines');
+                    var totalEl = el('adj-summary-total');
+                    if (!linesEl || !totalEl) { return; }
+
+                    linesEl.innerHTML = lines.length ? lines.join('<br>') : '<?php echo esc_js(__('Nothing added yet.', 'hourly-room-booking')); ?>';
+                    totalEl.textContent = money(grand);
                 }
                 var wrap = document.querySelector('.hrb-admin-booking-adjust');
                 if (wrap){
@@ -3650,9 +3694,11 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <th scope="col" class="column-payment">
                                 <?php _e('Payment', 'hourly-room-booking'); ?>
                             </th>
+                            <?php if (hrb_can_view_financials()): ?>
                             <th scope="col" class="column-amount">
                                 <?php echo hrb_get_sortable_header(__('Amount', 'hourly-room-booking'), 'amount', $filters['orderby'], $filters['order']); ?>
                             </th>
+                            <?php endif; ?>
                             <th scope="col" class="column-actions">
                                 <?php _e('Actions', 'hourly-room-booking'); ?>
                             </th>
@@ -3709,7 +3755,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                     ?>
                                 </td>                               <td class="column-status" data-label="<?php esc_attr_e('Status', 'hourly-room-booking'); ?>">
                                     <?php echo $admin->get_status_badge($booking['status']); ?>
-                                    <?php if (isset($booking['cancellation_fee']) && floatval($booking['cancellation_fee']) > 0): ?>
+                                    <?php if (hrb_can_view_financials() && isset($booking['cancellation_fee']) && floatval($booking['cancellation_fee']) > 0): ?>
                                         <br>
                                         <span class="hrb-cancellation-fee-badge" title="<?php esc_attr_e('Cancellation fee payable on-site', 'hourly-room-booking'); ?>">
                                             <?php printf(__('Cancel fee: %s', 'hourly-room-booking'), hrb_format_amount($booking['cancellation_fee'])); ?>
@@ -3730,12 +3776,14 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                         </small>
                                     </div>
                                 </td>
+                                <?php if (hrb_can_view_financials()): ?>
                                 <td class="column-amount" data-label="<?php esc_attr_e('Amount', 'hourly-room-booking'); ?>">
                                     <strong><?php echo hrb_format_amount($booking['total_amount']); ?></strong>
                                     <?php if ($booking['extra_people'] > 0): ?>
                                         <br><small><?php printf(__('%d extra people', 'hourly-room-booking'), $booking['extra_people']); ?></small>
                                     <?php endif; ?>
                                 </td>
+                                <?php endif; ?>
                                 <td class="column-actions">
                                     <div class="hrb-actions">
                                         <a href="<?php echo admin_url('admin.php?page=hrb-bookings&action=view&id=' . $booking['id']); ?>"
@@ -5332,6 +5380,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
 </style>
 
 <script>
+        // Whether this user may be shown money at all. See HRB_Capabilities.
+        var hrbCanViewFinancials = <?php echo hrb_can_view_financials() ? 'true' : 'false'; ?>;
     var ajaxurl = '<?php echo admin_url('admin-ajax.php'); ?>';
 
     // Room availability in the room picker.
@@ -6277,6 +6327,10 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
 
         // Global Price calculation and summary display function
         window.updatePriceSummary = function() {
+            // An Employee is never shown money, and the summary row they
+            // would be written into is not on the page for them.
+            if (!hrbCanViewFinancials) { return; }
+
             var roomId = $('#room_id').val();
             var duration = $('#duration').val();
             var extraPeople = parseInt($('#extra_people').val()) || 0;

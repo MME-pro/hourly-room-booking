@@ -5,6 +5,29 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-09-21
+
+### Added
+- **Two roles instead of one: Admin and Employee.** The plugin shipped a single "Room Booking Staff" role that carried every capability it defines, money included. It is now **Room Booking Employee** and runs the desk — bookings, the calendar, customers, the room diary, extras stock, and marking a booking paid — while seeing no figures at all. A new **Room Booking Admin** role carries everything. WordPress administrators are unaffected.
+- **`hrb_view_financials`**, one capability that draws the money line, defined with the role map in `HRB_Capabilities`. Every figure in the admin screens is behind it, so hiding a new one is a matter of asking the same question rather than inventing another rule. Hidden from an Employee: the revenue cards and the revenue line on the dashboard chart, the Amount column in all four booking lists, Total Spent, a booking's price, pricing breakdown, payment summary and invoice, room and extras prices in both the lists and the forms, the calendar's per-booking price and month revenue, the live price summary while taking a booking, and the costs on the adjust screen. The Payments and Reports screens, settings and exports are gone from their menu entirely.
+- **The figures are left out of the AJAX responses too**, not just hidden in the markup: dashboard stats, the chart series, calendar events and stats, the booking and customer detail modals, and the room and extra detail endpoints. A figure an Employee may not see is never one network response away.
+
+### Fixed
+- **"Export Payments" downloaded a file containing `0`.** The button asked admin-ajax for `action=export_payments`, and WordPress only dispatches an action it has a `wp_ajax_{action}` hook for. There was no such hook, so what came back was admin-ajax's "nothing matched" body — a single `0` byte, saved as the CSV. The export is now a real handler: it reads the same filters the screen was showing (status, method, date range, search), streams proper CSV, and opens in Excel as UTF-8 rather than mojibake.
+- **"Export Report" had the identical bug** and its button had been commented out rather than fixed. Both are working, and the Reports screen and its export now resolve the selected date range through one shared rule, so the file cannot cover a different period than the screen.
+- **The booking CSV export had no capability check at all** — only the shared nonce, which every plugin admin page carries. It requires `hrb_export_data` now, like every other export.
+- **A released update could go unmentioned for hours, or never arrive at all.** `HRB_Updater` only hooked `pre_set_site_transient_update_plugins` — WordPress *building* its update list, which it does on a throttle, and which core abandons early when it cannot reach api.wordpress.org. On a site with awkward outbound HTTP that filter may never fire, so no amount of clicking "Check for updates" produced anything. The release is now also injected on `site_transient_update_plugins`, every *read* of that list, which is what actually draws the plugins screen. The read filter never touches the network — it serves whatever is cached, because it would otherwise run on front-end requests too.
+
+### Changed
+- **A release is noticed within about five minutes now, with nobody clicking anything.** The lookup cache is 60 seconds while the site is up to date (was 30 minutes), and a new `hrb_check_for_updates` cron event re-asks GitHub every 5 minutes so an idle site nobody is browsing still notices. Once an update is pending the answer is held for 6 hours, because the read filter is already putting it on screen on every page load. The event is cleared on deactivation.
+- **`hrb_release_cache_ttl`** filters that cache, 0 included — but unauthenticated GitHub allows 60 calls an hour from one address and answers 403 beyond it, which this class caches as "no release". Polling harder past the limit produces *fewer* update notices, not more. Define `HRB_GITHUB_TOKEN` to raise the ceiling to 5000 an hour first.
+- Hidden price fields no longer save as zero. A user who may not see money is not shown the rate fields, so their post carries none; the stored rate is kept rather than overwritten with 0.
+- `COMMIT RELEASE DEPLOY` is a real command now — `.claude/commands/commit-release-deploy.md`, invokable as `/commit-release-deploy` — and it finishes by reading back what the live site is actually running instead of stopping at the published release.
+
+### Note
+- **Existing staff users lose their financial access on upgrade.** The old role wrote every capability onto each user record as well as onto the role, and a user-level capability outranks the role — so the upgrade revokes them from the users, not just from the role. Anyone who needs full access should be moved to **Room Booking Admin**.
+- **Extras stock is still not cross-midnight aware.** `HRB_Extra_Stock_Manager` matches overlapping bookings by date plus time-of-day, so the hours an overnight booking runs into the next day are not counted against an extra's stock.
+
 ## [1.12.0] - 2026-09-21
 
 ### Changed

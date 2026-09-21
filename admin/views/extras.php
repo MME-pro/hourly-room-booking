@@ -50,12 +50,14 @@ $stats = $extras_manager->get_extras_stats();
             <div class="hrb-stat-label"><?php _e('Inactive Extras', 'hourly-room-booking'); ?></div>
             </div>
         </div>
+        <?php if (hrb_can_view_financials()): ?>
         <div class="hrb-stat-card">
             <div class="hrb-stat-content">
             <div class="hrb-stat-number"><?php echo hrb_format_amount($stats['monthly_revenue'] ?? 0); ?></div>
             <div class="hrb-stat-label"><?php _e('Monthly Revenue', 'hourly-room-booking'); ?></div>
             </div>
         </div>
+        <?php endif; ?>
         <div class="hrb-stat-card">
             <div class="hrb-stat-content">
             <div class="hrb-stat-number"><?php echo esc_html($stats['total_booked_today'] ?? 0); ?></div>
@@ -93,7 +95,9 @@ $stats = $extras_manager->get_extras_stats();
                     <th scope="col" class="column-image"><?php _e('Image', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-name"><?php _e('Name', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-description"><?php _e('Description', 'hourly-room-booking'); ?></th>
+                    <?php if (hrb_can_view_financials()): ?>
                     <th scope="col" class="column-price"><?php _e('Price', 'hourly-room-booking'); ?></th>
+                    <?php endif; ?>
                     <th scope="col" class="column-stock"><?php _e('Stock', 'hourly-room-booking'); ?></th>
                     <th style="display: none;" scope="col" class="column-availability"><?php _e('Current Availability', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-sort"><?php _e('Sort Order', 'hourly-room-booking'); ?></th>
@@ -104,7 +108,7 @@ $stats = $extras_manager->get_extras_stats();
             <tbody id="sortable-extras">
                 <?php if (empty($extras)): ?>
                     <tr>
-                        <td colspan="9" class="hrb-no-data">
+                        <td colspan="<?php echo hrb_can_view_financials() ? 9 : 8; ?>" class="hrb-no-data">
                             <div class="hrb-empty-state">
                                 <span class="dashicons dashicons-cart"></span>
                                 <h3><?php _e('No extras found', 'hourly-room-booking'); ?></h3>
@@ -136,9 +140,11 @@ $stats = $extras_manager->get_extras_stats();
                             <td class="column-description">
                                 <?php echo wp_trim_words(esc_html($extra->description), 10); ?>
                             </td>
+                            <?php if (hrb_can_view_financials()): ?>
                             <td class="column-price">
                                 <strong><?php echo hrb_format_amount($extra->price); ?></strong>
                             </td>
+                            <?php endif; ?>
                             <td class="column-stock">
                                 <?php if (isset($extra->track_stock) && $extra->track_stock): ?>
                                     <span class="hrb-stock-info">
@@ -255,6 +261,7 @@ $stats = $extras_manager->get_extras_stats();
                             <p class="description"><?php _e('Optional description of the extra item.', 'hourly-room-booking'); ?></p>
                         </td>
                     </tr>
+                    <?php if (hrb_can_view_financials()): ?>
                     <tr>
                         <th scope="row">
                             <label for="extra_price"><?php printf(__('Price (%s)', 'hourly-room-booking'), hrb_get_currency_symbol()); ?> *</label>
@@ -263,6 +270,7 @@ $stats = $extras_manager->get_extras_stats();
                             <input type="number" name="extra_price" id="extra_price" min="0" step="0.01" class="regular-text" required>
                         </td>
                     </tr>
+                    <?php endif; ?>
                     <tr>
                         <th scope="row">
                             <label for="track_stock"><?php _e('Stock Management', 'hourly-room-booking'); ?></label>
@@ -1090,7 +1098,8 @@ function editExtra(extraId) {
     // Reset form fields
     document.getElementById('extra_name').value = '';
     document.getElementById('extra_description').value = '';
-    document.getElementById('extra_price').value = '';
+    var extraPriceField = document.getElementById('extra_price');
+    if (extraPriceField) extraPriceField.value = '';
     document.getElementById('stock_quantity').value = '';
     document.getElementById('track_stock').checked = true;
     document.getElementById('extra_image_url').value = '';
@@ -1119,7 +1128,8 @@ function editExtra(extraId) {
                 // Populate form fields
                 document.getElementById('extra_name').value = extra.name || '';
                 document.getElementById('extra_description').value = extra.description || '';
-                document.getElementById('extra_price').value = extra.price || '';
+                var extraPriceField = document.getElementById('extra_price');
+                if (extraPriceField) extraPriceField.value = extra.price || '';
                 document.getElementById('stock_quantity').value = extra.stock_quantity || '';
                 document.getElementById('track_stock').checked = extra.track_stock == 1;
                 document.getElementById('extra_image_url').value = extra.image_url || '';

@@ -53,6 +53,7 @@ if ($filter_status !== 'all') {
             <div class="hrb-stat-label"><?php _e('Total Rooms', 'hourly-room-booking'); ?></div>
             </div>
         </div>
+        <?php if (hrb_can_view_financials()): ?>
         <div class="hrb-stat-card">
             <div class="hrb-stat-content">
             <div class="hrb-stat-number"><?php 
@@ -67,6 +68,7 @@ if ($filter_status !== 'all') {
             <div class="hrb-stat-label"><?php _e('Starting from', 'hourly-room-booking'); ?></div>
             </div>
         </div>
+        <?php endif; ?>
     </div>
 
     <!-- Filters -->
@@ -93,7 +95,9 @@ if ($filter_status !== 'all') {
                     <th scope="col" class="column-name"><?php _e('Room Name', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-id"><?php _e('Room ID', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-capacity"><?php _e('Capacity', 'hourly-room-booking'); ?></th>
+                    <?php if (hrb_can_view_financials()): ?>
                     <th scope="col" class="column-price"><?php _e('Hourly Price', 'hourly-room-booking'); ?></th>
+                    <?php endif; ?>
                     <th scope="col" class="column-availability"><?php _e('Availability', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-amenities"><?php _e('Amenities', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-color"><?php _e('Color', 'hourly-room-booking'); ?></th>
@@ -104,7 +108,7 @@ if ($filter_status !== 'all') {
             <tbody id="sortable-rooms">
                 <?php if (empty($rooms)): ?>
                     <tr>
-                        <td colspan="9" class="hrb-no-data">
+                        <td colspan="<?php echo hrb_can_view_financials() ? 9 : 8; ?>" class="hrb-no-data">
                             <div class="hrb-empty-state">
                                 <span class="dashicons dashicons-admin-multisite"></span>
                                 <h3><?php _e('No rooms found', 'hourly-room-booking'); ?></h3>
@@ -155,6 +159,7 @@ if ($filter_status !== 'all') {
                             <td class="column-capacity" data-label="<?php esc_attr_e('Capacity', 'hourly-room-booking'); ?>">
                                 <span class="capacity-badge"><?php echo esc_html($room->capacity); ?> <?php _e('people', 'hourly-room-booking'); ?></span>
                             </td>
+                            <?php if (hrb_can_view_financials()): ?>
                             <td class="column-price" data-label="<?php esc_attr_e('Hourly Price', 'hourly-room-booking'); ?>">
                                 <?php 
                                 $room_manager = HRB_Room_Manager::getInstance();
@@ -162,6 +167,7 @@ if ($filter_status !== 'all') {
                                 ?>
                                 <strong><?php echo $price_range['formatted']; ?></strong>
                             </td>
+                            <?php endif; ?>
                             <td class="column-availability" data-label="<?php esc_attr_e('Availability', 'hourly-room-booking'); ?>">
                                 <?php
                                 $av_from_raw = $room->available_from ?? '00:00:00';
@@ -280,6 +286,7 @@ if ($filter_status !== 'all') {
                             <p class="description"><?php _e('Maximum number of people this room can accommodate.', 'hourly-room-booking'); ?></p>
                         </td>
                     </tr>
+                    <?php if (hrb_can_view_financials()): ?>
                     <tr>
                         <th scope="row">
                             <label for="room_price_2_hours"><?php printf(__('2 Hours Price (%s)', 'hourly-room-booking'), hrb_get_currency_symbol()); ?></label>
@@ -316,6 +323,7 @@ if ($filter_status !== 'all') {
                             <p class="description"><?php _e('Optional extra hour rate. Leave 0 to use global default.', 'hourly-room-booking'); ?></p>
                         </td>
                     </tr>
+                    <?php endif; ?>
                     <tr>
                         <th scope="row">
                             <label for="room_available_from"><?php _e('Bookable hours', 'hourly-room-booking'); ?></label>

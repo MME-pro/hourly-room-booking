@@ -227,7 +227,9 @@ $stats = [
                     <th scope="col" class="column-customer"><?php _e('Customer', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-contact"><?php _e('Contact Info', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-bookings"><?php _e('Bookings', 'hourly-room-booking'); ?></th>
+                    <?php if (hrb_can_view_financials()): ?>
                     <th scope="col" class="column-spent"><?php _e('Total Spent', 'hourly-room-booking'); ?></th>
+                    <?php endif; ?>
                     <th scope="col" class="column-status"><?php _e('Status', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-registered"><?php _e('Registered', 'hourly-room-booking'); ?></th>
                     <th scope="col" class="column-actions"><?php _e('Actions', 'hourly-room-booking'); ?></th>
@@ -236,7 +238,7 @@ $stats = [
             <tbody>
                 <?php if (empty($customers)): ?>
                     <tr>
-                        <td colspan="7" class="hrb-no-data">
+                        <td colspan="<?php echo hrb_can_view_financials() ? 7 : 6; ?>" class="hrb-no-data">
                             <div class="hrb-empty-state">
                                 <span class="dashicons dashicons-groups"></span>
                                 <h3><?php _e('No customers found', 'hourly-room-booking'); ?></h3>
@@ -313,9 +315,11 @@ $stats = [
                                     <?php endif; ?>
                                 </div>
                             </td>
+                            <?php if (hrb_can_view_financials()): ?>
                             <td class="column-spent" data-label="<?php esc_attr_e('Spent', 'hourly-room-booking'); ?>">
                                 <strong><?php echo hrb_format_amount($customer->total_spent ?: 0); ?></strong>
                             </td>
+                            <?php endif; ?>
                             <td class="column-status" data-label="<?php esc_attr_e('Status', 'hourly-room-booking'); ?>">
                                 <span class="hrb-status hrb-status-<?php echo $customer->is_verified ? 'verified' : 'unverified'; ?>">
                                     <?php echo $customer->is_verified ? __('Verified', 'hourly-room-booking') : __('Unverified', 'hourly-room-booking'); ?>

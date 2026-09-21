@@ -88,6 +88,27 @@ check('a newer patch is held', HRB_Updater::cache_ttl_for('1.9.1', '1.9.0'), $lo
 check('a newer minor is held', HRB_Updater::cache_ttl_for('1.10.0', '1.9.0'), $long);
 check('a newer major is held', HRB_Updater::cache_ttl_for('2.0.0', '1.9.9'), $long);
 
+// ---------------------------------------------------------------------------
+// The event that keeps the cache warm
+// ---------------------------------------------------------------------------
+
+echo "\n-- the recurring check --\n";
+
+// Someone looking at the plugins screen is served by the cache, which is a
+// minute: that is the promise of "it shows up straight away".
+check('the cache is a minute while up to date', $short, 60);
+
+check('the event has a hook name', HRB_Updater::CRON_HOOK, 'hrb_check_for_updates');
+check('and its own recurrence', HRB_Updater::CRON_INTERVAL, 'hrb_five_minutes');
+
+// The background check is for an idle site nobody is looking at, so it runs
+// slower than the cache expires - often enough to notice a release, rarely
+// enough to spend the hourly GitHub allowance on an empty admin.
+$cron = (new ReflectionClass('HRB_Updater'))->getConstant('CRON_TTL');
+check('the background check runs every five minutes', $cron, 300);
+check('and never faster than the cache it refreshes', $cron >= $short, true);
+
+
 // 1.10.0 is newer than 1.9.0 — string comparison would get this backwards, so
 // the rule has to be using version_compare.
 check(

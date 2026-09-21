@@ -18,48 +18,9 @@ $date_range = isset($_GET['range']) ? sanitize_text_field($_GET['range']) : 'thi
 $custom_start = isset($_GET['start_date']) ? sanitize_text_field($_GET['start_date']) : '';
 $custom_end = isset($_GET['end_date']) ? sanitize_text_field($_GET['end_date']) : '';
 
-// Set dates based on selected range
-switch ($date_range) {
-    case '7_days':
-        $start_date = date('Y-m-d', strtotime('-7 days'));
-        $end_date = date('Y-m-d');
-        break;
-    case '30_days':
-        $start_date = date('Y-m-d', strtotime('-30 days'));
-        $end_date = date('Y-m-d');
-        break;
-    case '90_days':
-        $start_date = date('Y-m-d', strtotime('-90 days'));
-        $end_date = date('Y-m-d');
-        break;
-    case 'this_month':
-        $start_date = date('Y-m-01');
-        $end_date = date('Y-m-t');
-        break;
-    case 'last_month':
-        $start_date = date('Y-m-01', strtotime('last month'));
-        $end_date = date('Y-m-t', strtotime('last month'));
-        break;
-    case 'this_year':
-        $start_date = date('Y-01-01');
-        $end_date = date('Y-12-31');
-        break;
-    case 'custom':
-        if (!empty($custom_start) && !empty($custom_end)) {
-            $start_date = $custom_start;
-            $end_date = $custom_end;
-        } else {
-            // Fallback to current month if custom dates are empty
-            $start_date = date('Y-m-01');
-            $end_date = date('Y-m-t');
-        }
-        break;
-    default:
-        // Default to current month
-        $start_date = date('Y-m-01');
-        $end_date = date('Y-m-t');
-        break;
-}
+// The dates this range covers. The export asks the same rule, so the file
+// that downloads covers exactly the period the screen is showing.
+list($start_date, $end_date) = HRB_Report_Exporter::date_range($date_range, $custom_start, $custom_end);
 
 // Get real analytics data from database
 global $wpdb;
@@ -263,10 +224,12 @@ $currency_symbol = hrb_get_currency_symbol();
             <p class="description"><?php _e('Comprehensive analytics and reports for your room booking business.', 'hourly-room-booking'); ?></p>
         </div>
         <div class="hrb-page-actions">
-            <!-- <button type="button" class="button" onclick="exportReport()">
+            <?php if (current_user_can('hrb_export_data')): ?>
+            <button type="button" class="button" onclick="exportReport()">
                 <span class="dashicons dashicons-download"></span>
                 <?php _e('Export Report', 'hourly-room-booking'); ?>
-            </button> -->
+            </button>
+            <?php endif; ?>
             <button type="button" class="button button-primary" onclick="printReport()">
                 <span class="dashicons dashicons-printer"></span>
                 <?php _e('Print Report', 'hourly-room-booking'); ?>
@@ -1160,10 +1123,11 @@ function toggleCustomDates(value) {
     customDates.style.display = value === 'custom' ? 'flex' : 'none';
 }
 
-// Export functionality
+// Export functionality. The selected range travels with the request, so the
+// download covers the same period the screen is showing.
 function exportReport() {
     const urlParams = new URLSearchParams(window.location.search);
-    urlParams.set('action', 'export_report');
+    urlParams.set('action', 'hrb_export_report');
     urlParams.set('nonce', '<?php echo wp_create_nonce('hrb_admin_nonce'); ?>');
 
     window.location.href = ajaxurl + '?' + urlParams.toString();

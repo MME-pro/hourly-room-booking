@@ -2,12 +2,20 @@
 
 WordPress plugin: **Hourly Room Booking System** (`hourly-room-booking`).
 Repository: <https://github.com/MME-pro/hourly-room-booking> (branch `main`).
-Installed locally at `wp-content/plugins/hourly-room-booking-main/` in a Local by Flywheel site.
+Installed locally at `wp-content/plugins/hourly-room-booking/` in a Local by Flywheel
+site (`Local Sites/mindmerit`) — the working tree *is* the installed plugin, so the
+local copy always reports whatever version was last committed here.
+Live site: <https://booking.techyza.com>.
 
 ## Command: `COMMIT RELEASE DEPLOY`
 
-When the user types **COMMIT RELEASE DEPLOY**, run the whole chain without asking for
-confirmation at each step:
+The full chain lives in
+[.claude/commands/commit-release-deploy.md](.claude/commands/commit-release-deploy.md)
+and runs as `/commit-release-deploy`. Typing **COMMIT RELEASE DEPLOY** means the
+same thing: follow that file. Keep the two in step — edit the command file, not
+a second copy of the steps here.
+
+In outline:
 
 1. **Version bump** — decide the next semver from the nature of the changes
    (patch = fixes, minor = features, major = breaking). Update all three places:
@@ -33,10 +41,14 @@ confirmation at each step:
    machine — never try to create the release locally, always go through the tag.
 
 4. **DEPLOY** — for this project deploy *is* the published release: installed sites
-   pull the update themselves through `HRB_Updater`. So finish by confirming the
-   workflow run succeeded and the release has the zip asset attached, e.g.
-   `curl -s https://api.github.com/repos/MME-pro/hourly-room-booking/releases/latest`.
-   Report the release URL back to the user. If the run failed, fix and re-tag.
+   pull the update themselves through `HRB_Updater`. Confirm the workflow run
+   succeeded and the release has the zip asset attached, then check what the
+   live site **https://booking.techyza.com** is actually running:
+   `curl -s https://booking.techyza.com/wp-content/plugins/hourly-room-booking/CHANGELOG.md | grep -m1 -oE '^## \[[0-9.]+\]'`
+   (that file is served directly, so it is not behind the page cache). Expect a
+   lag of up to an hour or more — see the cache TTLs below — and expect the site
+   not to install the update by itself unless auto-updates are on for it. Report
+   the release URL *and* what the live site is on. If the run failed, fix and re-tag.
 
 ## Update mechanism
 
@@ -44,15 +56,33 @@ confirmation at each step:
 plugin into the native WordPress update system and serves updates from GitHub
 releases:
 
+- **Two filters, and this is the point.** `pre_set_site_transient_update_plugins`
+  is WordPress *building* its update list, which it only does on a throttle —
+  about hourly on the plugins screen, twelve-hourly otherwise. That throttle,
+  not the plugin, was why a release could sit unmentioned for hours.
+  `site_transient_update_plugins` is every *read* of that list, which is what
+  actually draws the screen, so a release we already know about appears on the
+  next page load. The read filter never touches the network — it uses whatever
+  is cached and nothing else, because it would otherwise run on front-end
+  requests too.
+- **A cron event (`hrb_check_for_updates`, every 5 minutes)** keeps that cache
+  warm, so an idle site nobody is browsing still notices a release. It clears
+  the cache, re-asks GitHub and calls `wp_update_plugins()`. Cleared on
+  deactivation. Worst case from release to visible: five minutes, no clicking.
 - Reads `releases/latest`, cached in the `hrb_github_release` transient. How long
   depends on the answer (`HRB_Updater::cache_ttl_for()`): 6 hours once an update
-  is pending — it is already being offered, so re-asking buys nothing — and 30
-  minutes while the site is up to date, because that is the state a new release
-  has to be noticed in. A six-hour cache in *both* states was the bug behind
-  three "the update never arrived" reports: WordPress refreshes its own update
-  transient about hourly, and every one of those refreshes was answered from a
-  cache holding the previous release. 15 minutes on failure, so a GitHub outage
-  does not stall admin page loads.
+  is pending — it is already being offered on every page load by the read
+  filter, so re-asking buys nothing — and **60 seconds** while the site is up to
+  date, because that is the state a new release has to be noticed in. A
+  six-hour cache in *both* states was the bug behind three "the update never
+  arrived" reports. 15 minutes on failure, so a GitHub outage does not stall
+  admin page loads.
+- The `hrb_release_cache_ttl` filter overrides that, 0 included. Think first:
+  unauthenticated GitHub allows **60 calls an hour per IP address**, and when
+  that is exceeded GitHub answers 403, which this class caches as "no release".
+  Polling harder past the limit produces *fewer* update notices, not more.
+  `HRB_GITHUB_TOKEN` raises the ceiling to 5000 an hour and makes an aggressive
+  setting safe.
 - Compares the tag (leading `v` stripped) against `HRB_VERSION`.
 - Prefers the release's `.zip` asset over the source zipball.
 - `upgrader_source_selection` renames the extracted folder to the installed

@@ -1,0 +1,155 @@
+<?php
+/**
+ * Tests for the Admin/Employee split and the report date ranges.
+ *
+ * An Employee runs the desk and never sees money. That line is drawn by one
+ * capability, hrb_view_financials, and the role maps here are what put every
+ * screen on the right side of it. The denied list matters most: the role used
+ * to carry everything, and those capabilities were written onto each user as
+ * well, so they have to be named to be taken back.
+ *
+ * The date ranges belong to the export that was returning a bare 0. The
+ * Reports screen and its export have to land on the same two dates, so the
+ * rule is pinned here rather than trusted twice.
+ *
+ * Standalone, no PHPUnit:
+ *
+ *     php tests/unit/test-roles-and-exports.php
+ *
+ * @package HourlyRoomBooking
+ * @since 1.13.0
+ */
+
+define('ABSPATH', __DIR__);
+
+function add_action() { return true; }
+function add_filter() { return true; }
+function __($text, $domain = null) { return $text; }
+
+require_once dirname(__DIR__, 2) . '/includes/class-capabilities.php';
+require_once dirname(__DIR__, 2) . '/includes/class-report-exporter.php';
+
+$failures = 0;
+
+function check(string $label, $actual, $expected): void {
+    global $failures;
+
+    $passed = $actual === $expected;
+    if (!$passed) {
+        $failures++;
+    }
+
+    printf("%s %s\n", $passed ? 'PASS' : 'FAIL', $label);
+
+    if (!$passed) {
+        printf(
+            "    expected: %s\n    actual:   %s\n",
+            var_export($expected, true),
+            var_export($actual, true)
+        );
+    }
+}
+
+function employee_has(string $cap): bool {
+    return in_array($cap, HRB_Capabilities::employee_caps(), true);
+}
+
+function admin_has(string $cap): bool {
+    return in_array($cap, HRB_Capabilities::admin_caps(), true);
+}
+
+// ---------------------------------------------------------------------------
+// What an Employee may do
+// ---------------------------------------------------------------------------
+
+echo "\n-- the desk --\n";
+
+check('sees bookings', employee_has('hrb_view_bookings'), true);
+check('takes and edits bookings', employee_has('hrb_manage_bookings'), true);
+check('sees the calendar', employee_has('hrb_view_calendar'), true);
+check('handles customers', employee_has('hrb_manage_customers'), true);
+check('keeps the room diary', employee_has('hrb_manage_rooms'), true);
+check('keeps extras in stock', employee_has('hrb_manage_extras'), true);
+
+echo "\n-- but never the money --\n";
+
+check('no figures at all', employee_has(HRB_Capabilities::FINANCIALS), false);
+check('no payments screen', employee_has('hrb_view_payments'), false);
+check('no refunds or payment records', employee_has('hrb_manage_payments'), false);
+check('no reports', employee_has('hrb_view_reports'), false);
+check('no settings', employee_has('hrb_manage_settings'), false);
+check('no exports', employee_has('hrb_export_data'), false);
+
+// ---------------------------------------------------------------------------
+// What an Admin may do
+// ---------------------------------------------------------------------------
+
+echo "\n-- an Admin has the lot --\n";
+
+$missing_from_admin = array_values(array_diff(HRB_Capabilities::all_caps(), HRB_Capabilities::admin_caps()));
+check('nothing is withheld from an Admin', $missing_from_admin, []);
+check('including the figures', admin_has(HRB_Capabilities::FINANCIALS), true);
+check('and everything the desk has', array_values(array_diff(HRB_Capabilities::employee_caps(), HRB_Capabilities::admin_caps())), []);
+
+// ---------------------------------------------------------------------------
+// What has to be taken back from an existing Employee
+// ---------------------------------------------------------------------------
+
+echo "\n-- revoking the old grants --\n";
+
+$denied = HRB_Capabilities::employee_denied_caps();
+sort($denied);
+
+check('exactly the money capabilities are revoked', $denied, [
+    'hrb_export_data',
+    'hrb_manage_payments',
+    'hrb_manage_settings',
+    'hrb_view_financials',
+    'hrb_view_payments',
+    'hrb_view_reports',
+]);
+
+check('nothing the desk needs is revoked',
+    array_values(array_intersect($denied, HRB_Capabilities::employee_caps())), []);
+
+check('"read" is not treated as a plugin capability',
+    in_array('read', HRB_Capabilities::all_caps(), true), false);
+
+// ---------------------------------------------------------------------------
+// Report ranges: the screen and its export must agree
+// ---------------------------------------------------------------------------
+
+echo "\n-- report date ranges --\n";
+
+// Reckoned from Tuesday 2026-09-15, mid-month, so a month boundary is visible.
+const NOW = 1789430400; // 2026-09-15 00:00:00 UTC
+
+function report_range(string $r, string $from = '', string $to = ''): array {
+    return HRB_Report_Exporter::date_range($r, $from, $to, NOW);
+}
+
+check('this month runs first to last', report_range('this_month'), ['2026-09-01', '2026-09-30']);
+check('last month too', report_range('last_month'), ['2026-08-01', '2026-08-31']);
+check('this year', report_range('this_year'), ['2026-01-01', '2026-12-31']);
+check('7 days counts back from today', report_range('7_days'), ['2026-09-08', '2026-09-15']);
+check('30 days', report_range('30_days'), ['2026-08-16', '2026-09-15']);
+check('90 days', report_range('90_days'), ['2026-06-17', '2026-09-15']);
+check('a custom range is taken as given', report_range('custom', '2026-03-04', '2026-03-09'), ['2026-03-04', '2026-03-09']);
+check('a half-filled custom range falls back to this month', report_range('custom', '2026-03-04', ''), ['2026-09-01', '2026-09-30']);
+check('an unknown range falls back to this month', report_range('whatever'), ['2026-09-01', '2026-09-30']);
+
+// The 31st is the case that breaks a naive "-1 month": subtracting a month
+// from 31 August lands on 31 July, not in the month meant.
+check('last month from a 31-day month still lands whole',
+    HRB_Report_Exporter::date_range('last_month', '', '', strtotime('2026-03-31 12:00:00 UTC')),
+    ['2026-02-01', '2026-02-28']);
+
+// ---------------------------------------------------------------------------
+
+echo "\n";
+if ($failures > 0) {
+    printf("%d FAILED\n", $failures);
+    exit(1);
+}
+
+echo "ALL PASSED\n";

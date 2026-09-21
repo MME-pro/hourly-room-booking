@@ -784,10 +784,10 @@ class HRB_Admin {
                     'name' => $_POST['room_name'] ?? '',
                     'description' => $_POST['room_description'] ?? '',
                     'capacity' => $_POST['room_capacity'] ?? '',
-                    'price_2_hours' => $_POST['room_price_2_hours'] ?? 0,
-                    'price_3_hours' => $_POST['room_price_3_hours'] ?? 0,
-                    'price_4_hours' => $_POST['room_price_4_hours'] ?? 0,
-                    'price_extra_hour' => $_POST['room_price_extra_hour'] ?? 0,
+                    'price_2_hours' => self::posted_price('room_price_2_hours'),
+                    'price_3_hours' => self::posted_price('room_price_3_hours'),
+                    'price_4_hours' => self::posted_price('room_price_4_hours'),
+                    'price_extra_hour' => self::posted_price('room_price_extra_hour'),
                     'amenities' => isset($_POST['room_amenities']) ? 
                         array_filter(array_map('trim', explode(',', $_POST['room_amenities']))) : [],
                     'images' => isset($_POST['room_images']) ? 
@@ -830,6 +830,11 @@ class HRB_Admin {
             case 'update_room':
                 $room_id = intval($_POST['room_id']);
 
+                // Someone who may not see money is not shown the rate fields,
+                // so their post carries none. The stored rates are read here
+                // and handed back unchanged rather than saved as zero.
+                $current_room = $room_manager->get_room($room_id);
+
                 // Process amenities from comma-separated string to JSON array
                 $amenities_input = isset($_POST['room_amenities']) ? sanitize_text_field($_POST['room_amenities']) : '';
                 $amenities_array = array_filter(array_map('trim', explode(',', $amenities_input)));
@@ -858,10 +863,10 @@ class HRB_Admin {
                     'name' => sanitize_text_field($_POST['room_name']),
                     'description' => sanitize_textarea_field($_POST['room_description']),
                     'capacity' => intval($_POST['room_capacity']),
-                    'price_2_hours' => floatval($_POST['room_price_2_hours'] ?? 0),
-                    'price_3_hours' => floatval($_POST['room_price_3_hours'] ?? 0),
-                    'price_4_hours' => floatval($_POST['room_price_4_hours'] ?? 0),
-                    'price_extra_hour' => floatval($_POST['room_price_extra_hour'] ?? 0),
+                    'price_2_hours' => self::posted_price('room_price_2_hours', $current_room->price_2_hours ?? 0),
+                    'price_3_hours' => self::posted_price('room_price_3_hours', $current_room->price_3_hours ?? 0),
+                    'price_4_hours' => self::posted_price('room_price_4_hours', $current_room->price_4_hours ?? 0),
+                    'price_extra_hour' => self::posted_price('room_price_extra_hour', $current_room->price_extra_hour ?? 0),
                     'available_from' => $hrb_af,
                     'available_to' => $hrb_at,
                     'amenities' => $amenities_json,
@@ -1281,7 +1286,7 @@ class HRB_Admin {
             case 'create_extra':
                 $name = sanitize_text_field($_POST['extra_name']);
                 $description = sanitize_textarea_field($_POST['extra_description']);
-                $price = floatval($_POST['extra_price']);
+                $price = self::posted_price('extra_price');
                 $stock_quantity = intval($_POST['stock_quantity']);
                 $track_stock = isset($_POST['track_stock']) ? 1 : 0;
                 $image_url = esc_url_raw($_POST['extra_image_url']);
@@ -1308,9 +1313,10 @@ class HRB_Admin {
 
             case 'update_extra':
                 $extra_id = intval($_POST['extra_id']);
+                $current_extra = $extras_manager->get_extra($extra_id);
                 $name = sanitize_text_field($_POST['extra_name']);
                 $description = sanitize_textarea_field($_POST['extra_description']);
-                $price = floatval($_POST['extra_price']);
+                $price = self::posted_price('extra_price', $current_extra->price ?? 0);
                 $stock_quantity = intval($_POST['stock_quantity']);
                 $track_stock = isset($_POST['track_stock']) ? 1 : 0;
                 $image_url = esc_url_raw($_POST['extra_image_url']);
@@ -1547,8 +1553,16 @@ class HRB_Admin {
      * AJAX: Export bookings to CSV
      */
     private function ajax_export_bookings() {
-        $start_date = sanitize_text_field($_POST['start_date']);
-        $end_date = sanitize_text_field($_POST['end_date']);
+        // The dispatcher above only checks the nonce, which every plugin
+        // admin page carries. Taking the booking list out of the plugin is
+        // an export, so it wants the export capability of its own.
+        if (!current_user_can('hrb_export_data')) {
+            wp_send_json_error(__('Insufficient permissions', 'hourly-room-booking'));
+            return;
+        }
+
+        $start_date = sanitize_text_field($_POST['start_date'] ?? '');
+        $end_date = sanitize_text_field($_POST['end_date'] ?? '');
         
         $booking_manager = HRB_Booking_Manager::getInstance();
         $bookings = $booking_manager->get_bookings(array(
@@ -1585,126 +1599,126 @@ class HRB_Admin {
     }
     
     /**
-     * Add custom user roles
+     * A posted price, or the one already stored
+     *
+     * A user who may not be shown money is not shown the rate fields either,
+     * so nothing arrives for them in $_POST. Reading the absent field would
+     * save a zero and quietly wipe the rate, so what is already stored is
+     * handed back instead. The capability is checked as well as the field's
+     * presence, so a hand-made post cannot set a price either.
+     *
+     * @since 1.13.0
+     * @param string $field   $_POST key holding the price
+     * @param mixed  $current Value to keep when the field is not available
+     * @return float
+     */
+    private static function posted_price(string $field, $current = 0.0): float {
+        if (!isset($_POST[$field]) || !hrb_can_view_financials()) {
+            return (float) $current;
+        }
+
+        return floatval($_POST[$field]);
+    }
+
+    /**
+     * Create the plugin's two roles and keep them up to date
+     *
+     * Rebuilt on every admin load so a capability added to
+     * HRB_Capabilities reaches existing sites without a reinstall.
+     *
+     * @since 1.13.0 Split into Admin and Employee; see HRB_Capabilities.
      */
     public static function add_user_roles() {
-        // Remove existing role first to ensure clean update
-        remove_role('hrb_staff');
-        
-        // Add room booking staff role (FULL ACCESS)
-        add_role('hrb_staff', __('Room Booking Staff', 'hourly-room-booking'), array(
-            'read' => true,
-            'hrb_view_bookings' => true,
-            'hrb_manage_bookings' => true,   // Staff can manage bookings
-            'hrb_view_calendar' => true,
-            'hrb_view_customers' => true,
-            'hrb_manage_customers' => true,  // Staff can manage customers
-            'hrb_view_payments' => true,
-            'hrb_manage_payments' => true,   // Staff can manage payments
-            'hrb_view_reports' => true,
-            'hrb_manage_settings' => true,   // Staff can access settings
-            'hrb_manage_rooms' => true,      // Staff can manage rooms
-            'hrb_manage_extras' => true,     // Staff can manage extras
-            'hrb_view_extras' => true,       // Staff can view extras
-            'hrb_export_data' => true        // Staff can export data
-        ));
-        
-        // Force update existing users with hrb_staff role
+        // Rebuilt rather than patched, so a capability dropped from the map is
+        // dropped from the role too.
+        remove_role(HRB_Capabilities::ROLE_ADMIN);
+        remove_role(HRB_Capabilities::ROLE_EMPLOYEE);
+
+        add_role(
+            HRB_Capabilities::ROLE_ADMIN,
+            __('Room Booking Admin', 'hourly-room-booking'),
+            array_fill_keys(HRB_Capabilities::admin_caps(), true)
+        );
+
+        add_role(
+            HRB_Capabilities::ROLE_EMPLOYEE,
+            __('Room Booking Employee', 'hourly-room-booking'),
+            array_fill_keys(HRB_Capabilities::employee_caps(), true)
+        );
+
         self::update_existing_staff_capabilities();
-        
-        // Force update existing administrator users
         self::update_existing_admin_capabilities();
-        
-        // Add capabilities to administrator
+
         $admin_role = get_role('administrator');
         if ($admin_role) {
-            $admin_role->add_cap('hrb_view_bookings');
-            $admin_role->add_cap('hrb_manage_bookings');
-            $admin_role->add_cap('hrb_manage_rooms');
-            $admin_role->add_cap('hrb_manage_extras');
-            $admin_role->add_cap('hrb_view_extras');
-            $admin_role->add_cap('hrb_view_calendar');
-            $admin_role->add_cap('hrb_view_customers');
-            $admin_role->add_cap('hrb_manage_customers');
-            $admin_role->add_cap('hrb_view_payments');
-            $admin_role->add_cap('hrb_manage_payments');
-            $admin_role->add_cap('hrb_view_reports');
-            $admin_role->add_cap('hrb_manage_settings');
-            $admin_role->add_cap('hrb_export_data');  // Add export capability
+            foreach (HRB_Capabilities::all_caps() as $cap) {
+                $admin_role->add_cap($cap);
+            }
         }
     }
-    
+
     /**
-     * Update existing staff users with correct capabilities
+     * Take back what an Employee used to be given
+     *
+     * The role carried every capability once, and the plugin wrote them onto
+     * each user as well. A capability held by the user outranks the role, so
+     * stripping the role alone would leave every existing Employee still
+     * seeing every figure. These are removed from the user record.
+     *
+     * @since 1.13.0 Revokes rather than grants.
      */
     public static function update_existing_staff_capabilities() {
-        // Get all users with hrb_staff role
-        $staff_users = get_users(array('role' => 'hrb_staff'));
-        
-        foreach ($staff_users as $user) {
-            // Give staff full access to all plugin capabilities
-            $user->add_cap('hrb_view_bookings');
-            $user->add_cap('hrb_manage_bookings');
-            $user->add_cap('hrb_view_calendar');
-            $user->add_cap('hrb_view_customers');
-            $user->add_cap('hrb_manage_customers');
-            $user->add_cap('hrb_view_payments');
-            $user->add_cap('hrb_manage_payments');
-            $user->add_cap('hrb_view_reports');
-            $user->add_cap('hrb_manage_settings');
-            $user->add_cap('hrb_manage_rooms');
-            $user->add_cap('hrb_manage_extras');
-            $user->add_cap('hrb_view_extras');
-            $user->add_cap('hrb_export_data');
+        $employees = get_users(array('role' => HRB_Capabilities::ROLE_EMPLOYEE));
+        $denied    = HRB_Capabilities::employee_denied_caps();
+
+        foreach ($employees as $user) {
+            foreach ($denied as $cap) {
+                $user->remove_cap($cap);
+            }
+
+            // A capability the role already grants does not need writing to the
+            // user; one the role grants but an older version revoked does.
+            foreach (HRB_Capabilities::employee_caps() as $cap) {
+                if (!$user->has_cap($cap)) {
+                    $user->add_cap($cap);
+                }
+            }
         }
     }
-    
+
     /**
-     * Update existing administrator users with correct capabilities
+     * Give every WordPress administrator the full set
+     *
+     * @since 1.0.0
      */
     public static function update_existing_admin_capabilities() {
-        // Get all users with administrator role
-        $admin_users = get_users(array('role' => 'administrator'));
-        
-        foreach ($admin_users as $user) {
-            // Give administrators all plugin capabilities
-            $user->add_cap('hrb_view_bookings');
-            $user->add_cap('hrb_manage_bookings');
-            $user->add_cap('hrb_manage_rooms');
-            $user->add_cap('hrb_manage_extras');
-            $user->add_cap('hrb_view_extras');
-            $user->add_cap('hrb_view_calendar');
-            $user->add_cap('hrb_view_customers');
-            $user->add_cap('hrb_manage_customers');
-            $user->add_cap('hrb_view_payments');
-            $user->add_cap('hrb_manage_payments');
-            $user->add_cap('hrb_view_reports');
-            $user->add_cap('hrb_manage_settings');
-            $user->add_cap('hrb_export_data');
+        foreach (get_users(array('role' => 'administrator')) as $user) {
+            foreach (HRB_Capabilities::all_caps() as $cap) {
+                $user->add_cap($cap);
+            }
+        }
+
+        foreach (get_users(array('role' => HRB_Capabilities::ROLE_ADMIN)) as $user) {
+            foreach (HRB_Capabilities::all_caps() as $cap) {
+                $user->add_cap($cap);
+            }
         }
     }
-    
+
     /**
-     * Remove custom user roles
+     * Remove the plugin's roles and capabilities
+     *
+     * @since 1.0.0
      */
     public static function remove_user_roles() {
-        remove_role('hrb_staff');
-        
+        remove_role(HRB_Capabilities::ROLE_ADMIN);
+        remove_role(HRB_Capabilities::ROLE_EMPLOYEE);
+
         $admin_role = get_role('administrator');
         if ($admin_role) {
-            $admin_role->remove_cap('hrb_view_bookings');
-            $admin_role->remove_cap('hrb_manage_bookings');
-            $admin_role->remove_cap('hrb_manage_rooms');
-            $admin_role->remove_cap('hrb_manage_extras');
-            $admin_role->remove_cap('hrb_view_extras');
-            $admin_role->remove_cap('hrb_view_calendar');
-            $admin_role->remove_cap('hrb_view_customers');
-            $admin_role->remove_cap('hrb_manage_customers');
-            $admin_role->remove_cap('hrb_view_payments');
-            $admin_role->remove_cap('hrb_manage_payments');
-            $admin_role->remove_cap('hrb_view_reports');
-            $admin_role->remove_cap('hrb_manage_settings');
-            $admin_role->remove_cap('hrb_export_data');  // Remove export capability
+            foreach (HRB_Capabilities::all_caps() as $cap) {
+                $admin_role->remove_cap($cap);
+            }
         }
     }
     
@@ -1896,14 +1910,18 @@ class HRB_Admin {
             __('Today\'s Bookings', 'hourly-room-booking')
         );
         
-        printf(
-            '<div class="hrb-stat-item">
-                <div class="hrb-stat-number">%s</div>
-                <div class="hrb-stat-label">%s</div>
-            </div>',
-            $this->format_currency($stats['monthly_revenue']),
-            __('Monthly Revenue', 'hourly-room-booking')
-        );
+        // The month's takings are a figure, so the tile is not drawn at all
+        // for an Employee.
+        if (hrb_can_view_financials()) {
+            printf(
+                '<div class="hrb-stat-item">
+                    <div class="hrb-stat-number">%s</div>
+                    <div class="hrb-stat-label">%s</div>
+                </div>',
+                $this->format_currency($stats['monthly_revenue'] ?? 0),
+                __('Monthly Revenue', 'hourly-room-booking')
+            );
+        }
         
         printf(
             '<div class="hrb-stat-item">
@@ -1953,7 +1971,7 @@ class HRB_Admin {
                 '<div class="hrb-recent-booking-item">
                     <div class="hrb-booking-info">
                         <strong>%s</strong> - %s<br>
-                        <small>%s at %s | %s</small>
+                        <small>%s at %s%s</small>
                     </div>
                     <div class="hrb-booking-status">
                         %s
@@ -1963,7 +1981,7 @@ class HRB_Admin {
                 esc_html($booking->room_name),
                 $this->format_date($booking->booking_date),
                 $this->format_time($booking->start_time),
-                $this->format_currency($booking->total_amount),
+                hrb_can_view_financials() ? ' | ' . $this->format_currency($booking->total_amount) : '',
                 $this->get_status_badge($booking->status)
             );
         }
@@ -2028,13 +2046,22 @@ class HRB_Admin {
             AND status NOT IN ('cancelled', 'no_show')
         ");
 
-        return [
+        $stats = [
             'today_bookings' => intval($today_bookings),
-            'month_revenue' => floatval($month_revenue),
-            'month_transactions' => intval($month_transactions),
             'total_rooms' => intval($total_rooms),
             'pending_payments' => intval($pending_payments)
         ];
+
+        // The month's takings are a figure, so they are only in the array at
+        // all for someone allowed to see figures. The view checks the same
+        // capability before drawing the card; leaving the number out here too
+        // means a missed check cannot leak it.
+        if (hrb_can_view_financials()) {
+            $stats['month_revenue']      = floatval($month_revenue);
+            $stats['month_transactions'] = intval($month_transactions);
+        }
+
+        return $stats;
     }
 
     /**
@@ -2175,11 +2202,18 @@ class HRB_Admin {
             $revenue[]  = isset($revenue_rows[$date]) ? floatval($revenue_rows[$date]->revenue) : 0.0;
         }
 
-        wp_send_json_success([
+        $data = [
             'labels' => $labels,
-            'bookings' => $bookings,
-            'revenue' => $revenue
-        ]);
+            'bookings' => $bookings
+        ];
+
+        // The revenue series is money; it is left out entirely rather than
+        // zeroed, so the chart simply has one line for an Employee.
+        if (hrb_can_view_financials()) {
+            $data['revenue'] = $revenue;
+        }
+
+        wp_send_json_success($data);
     }
 
     /**
@@ -2220,16 +2254,11 @@ class HRB_Admin {
             }
         }
 
-        wp_send_json_success([
+        $room_details = [
             'id' => $room->id,
             'name' => $room->name,
             'description' => $room->description,
             'capacity' => $room->capacity,
-            'hourly_price' => $room->hourly_price,
-            'price_2_hours' => $room->price_2_hours ?? 0,
-            'price_3_hours' => $room->price_3_hours ?? 0,
-            'price_4_hours' => $room->price_4_hours ?? 0,
-            'price_extra_hour' => $room->price_extra_hour ?? 0,
             'amenities' => $amenities_display,
             'images' => $room->images, // Add images field
             'color' => $room->color ?? '#3498db', // Add color field
@@ -2239,7 +2268,20 @@ class HRB_Admin {
             'is_active' => $room->is_active,
             'created_at' => $room->created_at,
             'updated_at' => $room->updated_at
-        ]);
+        ];
+
+        // The rate fields are not on the form for an Employee, so the rates
+        // do not travel to them either - otherwise the figures would simply
+        // be one network response away.
+        if (hrb_can_view_financials()) {
+            $room_details['hourly_price']     = $room->hourly_price;
+            $room_details['price_2_hours']    = $room->price_2_hours ?? 0;
+            $room_details['price_3_hours']    = $room->price_3_hours ?? 0;
+            $room_details['price_4_hours']    = $room->price_4_hours ?? 0;
+            $room_details['price_extra_hour'] = $room->price_extra_hour ?? 0;
+        }
+
+        wp_send_json_success($room_details);
     }
 
     /**
@@ -2322,7 +2364,7 @@ class HRB_Admin {
                     'backgroundColor' => $room_color,
                     'borderColor' => $room_color,
                     'textColor' => '#fff',
-                    'extendedProps' => array(
+                    'extendedProps' => array_filter(array(
                         'booking_reference' => $event->booking_reference,
                         'is_anonymous' => (int) $event->is_anonymous,
                         'customer_name' => $customer_name,
@@ -2330,9 +2372,14 @@ class HRB_Admin {
                         'room_color' => $room_color,
                         'status' => $event->status,
                         'payment_status' => $event->payment_status,
-                        'total_amount' => number_format($event->total_amount, 2),
+                        // The card omits the price for an Employee; the figure
+                        // is left out of the feed so it cannot be read off the
+                        // network response either.
+                        'total_amount' => hrb_can_view_financials()
+                            ? number_format($event->total_amount, 2)
+                            : null,
                         'extras' => $extras_list
-                    )
+                    ), static function ($value) { return $value !== null; })
                 );
             }
 
@@ -2638,22 +2685,28 @@ class HRB_Admin {
             AND status NOT IN ('cancelled', 'no_show')
         ", $month_start, $month_end));
 
-        // This month's revenue
-        $month_revenue = $wpdb->get_var($wpdb->prepare("
-            SELECT COALESCE(SUM(total_amount), 0)
-            FROM {$wpdb->prefix}hrb_bookings
-            WHERE booking_date BETWEEN %s AND %s
-            {$room_filter}
-            AND status IN ('confirmed', 'completed')
-        ", $month_start, $month_end));
-
-
-        wp_send_json_success([
+        $stats = [
             'today' => intval($today_bookings),
-            'week' => intval($week_bookings),
-            'month' => intval($month_bookings),
-            'revenue' => floatval($month_revenue)
-        ]);
+            'week'  => intval($week_bookings),
+            'month' => intval($month_bookings)
+        ];
+
+        // The month's takings only travel to someone allowed to see money; the
+        // card is hidden at the other end for the same reason.
+        if (hrb_can_view_financials()) {
+            // This month's revenue
+            $month_revenue = $wpdb->get_var($wpdb->prepare("
+                SELECT COALESCE(SUM(total_amount), 0)
+                FROM {$wpdb->prefix}hrb_bookings
+                WHERE booking_date BETWEEN %s AND %s
+                {$room_filter}
+                AND status IN ('confirmed', 'completed')
+            ", $month_start, $month_end));
+
+            $stats['revenue'] = floatval($month_revenue);
+        }
+
+        wp_send_json_success($stats);
     }
 
     /**
@@ -2971,10 +3024,12 @@ class HRB_Admin {
                     <span class="hrb-bd-label"><i class="bi bi-credit-card-fill"></i><?php _e('Payment Status', 'hourly-room-booking'); ?></span>
                     <span class="hrb-bd-value"><?php echo $this->get_payment_status_badge($booking->payment_status); ?></span>
                 </div>
+                <?php if (hrb_can_view_financials()): ?>
                 <div class="hrb-bd-item hrb-bd-item-total">
                     <span class="hrb-bd-label"><i class="bi bi-currency-euro"></i><?php _e('Total Amount', 'hourly-room-booking'); ?></span>
                     <span class="hrb-bd-value hrb-bd-amount"><?php echo esc_html(number_format((float) $booking->total_amount, 2)); ?> €</span>
                 </div>
+                <?php endif; ?>
                 <?php if (!empty($booking->extra_people) && $booking->extra_people > 0): ?>
                 <div class="hrb-bd-item">
                     <span class="hrb-bd-label"><i class="bi bi-people-fill"></i><?php _e('Extra People', 'hourly-room-booking'); ?></span>
@@ -3166,7 +3221,9 @@ class HRB_Admin {
             $html .= '<th>' . __('Room', 'hourly-room-booking') . '</th>';
             $html .= '<th>' . __('Time', 'hourly-room-booking') . '</th>';
             $html .= '<th>' . __('Status', 'hourly-room-booking') . '</th>';
-            $html .= '<th>' . __('Amount', 'hourly-room-booking') . '</th>';
+            if (hrb_can_view_financials()) {
+                $html .= '<th>' . __('Amount', 'hourly-room-booking') . '</th>';
+            }
             $html .= '</tr>';
             $html .= '</thead>';
             $html .= '<tbody>';
@@ -3178,7 +3235,9 @@ class HRB_Admin {
                 $html .= '<td>' . esc_html($booking->room_name) . '</td>';
                 $html .= '<td>' . esc_html($booking->start_time . ' - ' . $booking->end_time) . '</td>';
                 $html .= '<td><span class="status-' . esc_attr($booking->status) . '">' . esc_html($booking->status_label) . '</span></td>';
-                $html .= '<td>€' . number_format($booking->total_amount, 2) . '</td>';
+                if (hrb_can_view_financials()) {
+                    $html .= '<td>€' . number_format($booking->total_amount, 2) . '</td>';
+                }
                 $html .= '</tr>';
             }
 
@@ -3387,7 +3446,8 @@ class HRB_Admin {
             'id' => $extra->id,
             'name' => $extra->name,
             'description' => $extra->description,
-            'price' => $extra->price,
+            // Left out for an Employee, whose form has no price field.
+            'price' => hrb_can_view_financials() ? $extra->price : null,
             'stock_quantity' => isset($extra->stock_quantity) ? $extra->stock_quantity : 0,
             'track_stock' => isset($extra->track_stock) ? $extra->track_stock : 1,
             'image_url' => $extra->image_url,

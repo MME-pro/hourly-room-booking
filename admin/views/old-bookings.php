@@ -255,7 +255,9 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                                 <?php
                                 $extras_list = [];
                                 foreach ($booking_extras as $extra) {
-                                    $extras_list[] = $extra->name . ' (' . hrb_format_amount($extra->total_price) . ')';
+                                    $extras_list[] = hrb_can_view_financials()
+                                        ? $extra->name . ' (' . hrb_format_amount($extra->total_price) . ')'
+                                        : $extra->name;
                                 }
                                 echo implode(', ', $extras_list);
                                 ?>
@@ -290,10 +292,12 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                 <div class="hrb-details-section">
                     <h3><?php _e('Payment Information', 'hourly-room-booking'); ?></h3>
                     <table class="widefat">
+                        <?php if (hrb_can_view_financials()): ?>
                         <tr>
                             <th><?php _e('Amount', 'hourly-room-booking'); ?></th>
                             <td><?php echo hrb_format_amount($booking->total_amount); ?></td>
                         </tr>
+                        <?php endif; ?>
                         <tr>
                             <th><?php _e('Payment Status', 'hourly-room-booking'); ?></th>
                             <td>
@@ -327,6 +331,7 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                     </table>
                 </div>
 
+                <?php if (hrb_can_view_financials()): ?>
                 <div class="hrb-details-section">
                     <h3><?php _e('Pricing Breakdown', 'hourly-room-booking'); ?></h3>
                     <table class="widefat">
@@ -371,6 +376,7 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                         </tr>
                     </table>
                 </div>
+                <?php endif; ?>
 
                 <?php if (!empty($booking->special_requests)): ?>
                     <div class="hrb-details-section">
@@ -563,9 +569,11 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                             <th scope="col" class="column-payment">
                                 <?php _e('Payment', 'hourly-room-booking'); ?>
                             </th>
+                            <?php if (hrb_can_view_financials()): ?>
                             <th scope="col" class="column-amount">
                                 <?php echo hrb_get_sortable_header(__('Amount', 'hourly-room-booking'), 'amount', $filters['orderby'], $filters['order']); ?>
                             </th>
+                            <?php endif; ?>
                             <th scope="col" class="column-actions">
                                 <?php _e('Actions', 'hourly-room-booking'); ?>
                             </th>
@@ -636,12 +644,14 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                                         <br><small><?php echo esc_html(hrb_get_payment_method_label($booking['payment_method'])); ?></small>
                                     </div>
                                 </td>
+                                <?php if (hrb_can_view_financials()): ?>
                                 <td class="column-amount">
                                     <strong><?php echo hrb_format_amount($booking['total_amount']); ?></strong>
                                     <?php if ($booking['extra_people'] > 0): ?>
                                         <br><small><?php printf(__('%d extra people', 'hourly-room-booking'), $booking['extra_people']); ?></small>
                                     <?php endif; ?>
                                 </td>
+                                <?php endif; ?>
                                 <td class="column-actions">
                                     <div class="hrb-actions">
                                         <a href="<?php echo admin_url('admin.php?page=hrb-old-bookings&action=view&id=' . $booking['id']); ?>"

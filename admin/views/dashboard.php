@@ -47,7 +47,8 @@ $month_end = date('Y-m-t');
                 </div>
             </div>
 
-            <!-- This Month's Revenue -->
+            <!-- This Month's Revenue. A figure, so an Employee never sees it. -->
+            <?php if (hrb_can_view_financials()): ?>
             <div class="hrb-stat-card hrb-stat-revenue">
                 <div class="hrb-stat-icon">
                     <i class="bi bi-graph-up-arrow"></i>
@@ -71,6 +72,7 @@ $month_end = date('Y-m-t');
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- Total Rooms -->
             <div class="hrb-stat-card hrb-stat-rooms">
@@ -125,7 +127,9 @@ $month_end = date('Y-m-t');
                                 <th><?php _e('Room', 'hourly-room-booking'); ?></th>
                                 <th><?php _e('Date & Time', 'hourly-room-booking'); ?></th>
                                 <th><?php _e('Status', 'hourly-room-booking'); ?></th>
+                                <?php if (hrb_can_view_financials()): ?>
                                 <th><?php _e('Amount', 'hourly-room-booking'); ?></th>
+                                <?php endif; ?>
                                 <th><?php _e('Actions', 'hourly-room-booking'); ?></th>
                             </tr>
                         </thead>
@@ -153,9 +157,11 @@ $month_end = date('Y-m-t');
                                         <td>
                                             <?php echo HRB_Admin::getInstance()->get_status_badge($booking['status']); ?>
                                         </td>
+                                        <?php if (hrb_can_view_financials()): ?>
                                         <td>
                                             <strong><?php echo hrb_format_amount($booking['total_amount']); ?></strong>
                                         </td>
+                                        <?php endif; ?>
                                         <td>
                                             <div class="hrb-actions">
                                                 <a href="<?php echo admin_url('admin.php?page=hrb-bookings&action=view&id=' . $booking['id']); ?>"
@@ -174,7 +180,7 @@ $month_end = date('Y-m-t');
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="7" class="hrb-no-data">
+                                    <td colspan="<?php echo hrb_can_view_financials() ? 7 : 6; ?>" class="hrb-no-data">
                                         <?php _e('No recent bookings found.', 'hourly-room-booking'); ?>
                                     </td>
                                 </tr>
@@ -222,11 +228,13 @@ $month_end = date('Y-m-t');
                         <?php _e('View Calendar', 'hourly-room-booking'); ?>
                     </a>
 
+                    <?php if (current_user_can('hrb_view_reports')): ?>
                     <a href="<?php echo admin_url('admin.php?page=hrb-reports'); ?>"
                        class="button button-secondary button-large hrb-action-btn">
                         <span class="dashicons dashicons-chart-bar"></span>
                         <?php _e('View Reports', 'hourly-room-booking'); ?>
                     </a>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -320,24 +328,58 @@ document.addEventListener('DOMContentLoaded', function() {
         const ctx = document.getElementById('hrbBookingChart');
         if (!ctx) return;
 
+        const datasets = [{
+            label: '<?php _e('Bookings', 'hourly-room-booking'); ?>',
+            data: data.bookings,
+            borderColor: '#007cba',
+            backgroundColor: 'rgba(0, 124, 186, 0.1)',
+            tension: 0.1
+        }];
+
+        const scales = {
+            y: {
+                type: 'linear',
+                display: true,
+                position: 'left',
+                title: {
+                    display: true,
+                    text: '<?php _e('Bookings', 'hourly-room-booking'); ?>'
+                }
+            }
+        };
+
+        // The server leaves the revenue series out of the response entirely for
+        // anyone who may not be shown money, so for an Employee this is simply
+        // a one-line chart of how many bookings there were.
+        if (data.revenue) {
+            datasets.push({
+                label: '<?php _e('Revenue', 'hourly-room-booking'); ?>',
+                data: data.revenue,
+                borderColor: '#00a32a',
+                backgroundColor: 'rgba(0, 163, 42, 0.1)',
+                tension: 0.1,
+                yAxisID: 'y1'
+            });
+
+            scales.y1 = {
+                type: 'linear',
+                display: true,
+                position: 'right',
+                title: {
+                    display: true,
+                    text: '<?php printf(esc_js(__('Revenue (%s)', 'hourly-room-booking')), esc_js(hrb_get_currency_symbol())); ?>'
+                },
+                grid: {
+                    drawOnChartArea: false,
+                },
+            };
+        }
+
         new Chart(ctx, {
             type: 'line',
             data: {
                 labels: data.labels,
-                datasets: [{
-                    label: '<?php _e('Bookings', 'hourly-room-booking'); ?>',
-                    data: data.bookings,
-                    borderColor: '#007cba',
-                    backgroundColor: 'rgba(0, 124, 186, 0.1)',
-                    tension: 0.1
-                }, {
-                    label: '<?php _e('Revenue', 'hourly-room-booking'); ?>',
-                    data: data.revenue,
-                    borderColor: '#00a32a',
-                    backgroundColor: 'rgba(0, 163, 42, 0.1)',
-                    tension: 0.1,
-                    yAxisID: 'y1'
-                }]
+                datasets: datasets
             },
             options: {
                 responsive: true,
@@ -345,29 +387,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     mode: 'index',
                     intersect: false,
                 },
-                scales: {
-                    y: {
-                        type: 'linear',
-                        display: true,
-                        position: 'left',
-                        title: {
-                            display: true,
-                            text: '<?php _e('Bookings', 'hourly-room-booking'); ?>'
-                        }
-                    },
-                    y1: {
-                        type: 'linear',
-                        display: true,
-                        position: 'right',
-                        title: {
-                            display: true,
-                            text: '<?php _e('Revenue (�)', 'hourly-room-booking'); ?>'
-                        },
-                        grid: {
-                            drawOnChartArea: false,
-                        },
-                    }
-                }
+                scales: scales
             }
         });
     }

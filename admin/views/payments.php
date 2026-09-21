@@ -92,10 +92,12 @@ $currency_symbol = hrb_get_currency_symbol();
             <p class="description"><?php _e('Manage payment transactions, process refunds, and view payment analytics.', 'hourly-room-booking'); ?></p>
         </div>
         <div class="hrb-page-actions">
+            <?php if (current_user_can('hrb_export_data')): ?>
             <button type="button" class="button" onclick="exportPayments()">
                 <span class="dashicons dashicons-download"></span>
                 <?php _e('Export Payments', 'hourly-room-booking'); ?>
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -1201,8 +1203,11 @@ $currency_symbol = hrb_get_currency_symbol();
     }
 
     function exportPayments() {
+        // The screen's own query string goes along, so the download is the
+        // filtered list rather than everything. 'hrb_export_payments' is the
+        // name admin-ajax dispatches on; anything else answers with a bare 0.
         const params = new URLSearchParams(window.location.search);
-        params.set('action', 'export_payments');
+        params.set('action', 'hrb_export_payments');
         params.set('nonce', '<?php echo wp_create_nonce('hrb_admin_nonce'); ?>');
         window.location.href = ajaxurl + '?' + params.toString();
     }

@@ -23,6 +23,23 @@ function hrb_format_amount(float $amount, bool $show_symbol = true): string {
 }
 
 /**
+ * May the current user be shown money?
+ *
+ * The admin screens ask this before printing any figure: a total, a
+ * price, a revenue card, a payment record. An Employee runs the desk
+ * without seeing sums; an Admin sees everything. See HRB_Capabilities.
+ *
+ * Deliberately not built into hrb_format_amount(): the customer-facing
+ * pages, the invoices and the emails all format money for people who are
+ * not logged in at all, and must keep doing so.
+ *
+ * @since 1.13.0
+ */
+function hrb_can_view_financials(): bool {
+    return HRB_Capabilities::can_view_financials();
+}
+
+/**
  * Get currency code
  */
 function hrb_get_currency_code(): string {

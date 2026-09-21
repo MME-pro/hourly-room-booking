@@ -105,10 +105,12 @@ $selected_room = isset($_GET['room_id']) ? intval($_GET['room_id']) : 0;
                 <div class="hrb-stat-number" id="stats-month">0</div>
                 <div class="hrb-stat-label"><?php _e('This Month', 'hourly-room-booking'); ?></div>
             </div>
+            <?php if (hrb_can_view_financials()): ?>
             <div class="hrb-stat-card">
                 <div class="hrb-stat-number" id="stats-revenue"><?php echo hrb_format_amount(0); ?></div>
                 <div class="hrb-stat-label"><?php _e('Month Revenue', 'hourly-room-booking'); ?></div>
             </div>
+            <?php endif; ?>
         </div>
     </div>
 </div>
@@ -1430,11 +1432,16 @@ function initializeCalendar() {
                 ? '<div class="fc-event-row fc-event-ref"><i class="bi bi-hash fc-event-icon"></i><span>' + bookingRef + '</span></div>'
                 : '';
 
-            // Build combined time + price row
-            const totalAmount = arg.event.extendedProps.total_amount || '0.00';
+            // Build the time row, with the price beside it for anyone allowed
+            // to see money. The server omits total_amount for an Employee, so
+            // the card is just a time for them.
+            const totalAmount = arg.event.extendedProps.total_amount;
+            const pricePart = (totalAmount === undefined || totalAmount === null)
+                ? ''
+                : '<div class="fc-event-price-part"><i class="bi bi-currency-euro fc-event-icon"></i><span>' + totalAmount + ' €</span></div>';
             let timeAndPriceRow = '<div class="fc-event-row fc-event-time-price">' +
                                     '<div class="fc-event-time-part"><i class="bi bi-clock-fill fc-event-icon"></i><span>' + timeText + '</span></div>' +
-                                    '<div class="fc-event-price-part"><i class="bi bi-currency-euro fc-event-icon"></i><span>' + totalAmount + ' €</span></div>' +
+                                    pricePart +
                                     '</div>';
 
             // Build extras row (if any) - show all extras with wrapping
@@ -1688,7 +1695,10 @@ function loadCalendarStats() {
                 document.getElementById('stats-today').textContent = stats.today || 0;
                 document.getElementById('stats-week').textContent = stats.week || 0;
                 document.getElementById('stats-month').textContent = stats.month || 0;
-                document.getElementById('stats-revenue').textContent = '<?php echo hrb_get_currency_symbol(); ?>' + (stats.revenue || 0).toFixed(2);
+                const revenueEl = document.getElementById('stats-revenue');
+                if (revenueEl && stats.revenue !== undefined) {
+                    revenueEl.textContent = '<?php echo esc_js(hrb_get_currency_symbol()); ?>' + (stats.revenue || 0).toFixed(2);
+                }
             } else {
                 /* removed debug console.error */
             }

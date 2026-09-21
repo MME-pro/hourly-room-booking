@@ -63,8 +63,38 @@ class HRB_Updater {
      * answered from a six-hour cache: a site could sit on "up to date" for
      * most of a day after a release went out, with GitHub answering correctly
      * the whole time. Only a manual "Check again" broke through.
+     *
+     * A minute, which is as close to no cache as is worth going. The filter
+     * `hrb_release_cache_ttl` overrides it, including down to 0, but read
+     * the note on rate limits in get_remote_release() before doing that:
+     * unauthenticated GitHub allows 60 calls an hour from an address, and a
+     * cache short enough to exceed that turns into no update checks at all.
      */
-    const IDLE_TTL = 1800;
+    const IDLE_TTL = 60;
+
+    /**
+     * Cron schedule and hook that keep the release cache warm
+     *
+     * WordPress rebuilds its own plugin-update list on a throttle - roughly
+     * an hour while someone is on the Plugins screen, twelve otherwise - and
+     * only that rebuild used to give us a chance to speak. A release could
+     * therefore be hours old before it was mentioned. This event asks GitHub
+     * on its own schedule so the answer is already in hand, and
+     * offer_cached_update() then puts it in front of the user on the next
+     * page load rather than on WordPress's next rebuild.
+     */
+    const CRON_INTERVAL = 'hrb_five_minutes';
+    const CRON_HOOK     = 'hrb_check_for_updates';
+
+    /**
+     * How often the background check runs (5 minutes)
+     *
+     * Deliberately slower than the cache: this event exists so an idle site
+     * notices a release without anyone opening the admin, and for that a few
+     * minutes is plenty. Someone actually looking at the plugins screen is
+     * served by the cache TTL above, which is a minute.
+     */
+    const CRON_TTL = 300;
 
     /**
      * Plugin basename, e.g. "hourly-room-booking-main/hourly-room-booking.php"
@@ -105,7 +135,17 @@ class HRB_Updater {
             return;
         }
 
+        // Two filters, on purpose. The first is WordPress building its update
+        // list, which it does on a throttle. The second is every *read* of
+        // that list, which is what actually draws the plugins screen - so a
+        // release we already know about shows up immediately instead of
+        // waiting for the next rebuild.
         add_filter('pre_set_site_transient_update_plugins', [$this, 'check_for_update']);
+        add_filter('site_transient_update_plugins', [$this, 'offer_cached_update']);
+
+        add_filter('cron_schedules', [$this, 'add_cron_interval']);
+        add_action(self::CRON_HOOK, [$this, 'refresh_release_cache']);
+        add_action('admin_init', [$this, 'schedule_check']);
         add_filter('plugins_api', [$this, 'plugin_info'], 20, 3);
         add_filter('upgrader_source_selection', [$this, 'fix_source_dir'], 10, 4);
         add_filter('upgrader_pre_download', [$this, 'authorize_download'], 10, 3);
@@ -126,7 +166,10 @@ class HRB_Updater {
     private function __clone() {}
 
     /**
-     * Inject the GitHub release into the plugin update transient
+     * Inject the GitHub release while WordPress rebuilds its update list
+     *
+     * This is the slow path: WordPress decides when to rebuild, and it may
+     * fetch from GitHub if the cache has lapsed.
      *
      * @param object $transient Update transient built by WordPress
      * @return object
@@ -136,7 +179,39 @@ class HRB_Updater {
             return $transient;
         }
 
-        $release = $this->get_remote_release();
+        return $this->apply_release($transient, $this->get_remote_release());
+    }
+
+    /**
+     * Inject a release we already know about, on every read of the update list
+     *
+     * The fast path, and the reason a new release now shows up within minutes
+     * rather than on WordPress's next rebuild. It reads only what is already
+     * cached and never touches the network: this filter runs on front-end page
+     * loads too, and a fifteen second GitHub timeout has no business there.
+     * Keeping the cache warm is the cron event's job.
+     *
+     * @since 1.13.0
+     * @param mixed $transient Update transient being read
+     * @return mixed
+     */
+    public function offer_cached_update($transient) {
+        if (!is_object($transient)) {
+            return $transient;
+        }
+
+        return $this->apply_release($transient, $this->get_cached_release());
+    }
+
+    /**
+     * Put a release into the update list, as pending or as up to date
+     *
+     * @since 1.13.0
+     * @param object $transient Update transient
+     * @param array  $release   Normalised release data
+     * @return object
+     */
+    private function apply_release($transient, array $release) {
         if (empty($release['version'])) {
             return $transient;
         }
@@ -168,6 +243,82 @@ class HRB_Updater {
         }
 
         return $transient;
+    }
+
+    /**
+     * Offer the quarter-hourly recurrence WordPress does not ship
+     *
+     * @since 1.13.0
+     * @param array $schedules
+     * @return array
+     */
+    public function add_cron_interval($schedules) {
+        if (!is_array($schedules)) {
+            return $schedules;
+        }
+
+        $schedules[self::CRON_INTERVAL] = [
+            'interval' => self::CRON_TTL,
+            'display'  => __('Every 5 minutes', 'hourly-room-booking'),
+        ];
+
+        return $schedules;
+    }
+
+    /**
+     * Book the recurring check, re-booking it if the recurrence has changed
+     *
+     * WP-Cron writes the interval onto the event when it is booked and never
+     * revisits it, so a site scheduled under an older, longer recurrence would
+     * keep that recurrence forever unless the mismatch is noticed here.
+     *
+     * @since 1.13.0
+     */
+    public function schedule_check() {
+        $event = wp_get_scheduled_event(self::CRON_HOOK);
+
+        if ($event && self::CRON_INTERVAL === ($event->schedule ?? '')) {
+            return;
+        }
+
+        if ($event) {
+            wp_clear_scheduled_hook(self::CRON_HOOK);
+        }
+
+        wp_schedule_event(time() + self::CRON_TTL, self::CRON_INTERVAL, self::CRON_HOOK);
+    }
+
+    /**
+     * Ask GitHub now and have WordPress rebuild its list from the answer
+     *
+     * Both halves matter. Refreshing only our own cache would leave a release
+     * sitting unmentioned until WordPress next rebuilt - twice a day by
+     * default, which is the whole reason this event exists. Refreshing only
+     * WordPress's list would hand it the same stale cache back.
+     *
+     * @since 1.13.0
+     */
+    public function refresh_release_cache() {
+        $this->purge_release_cache();
+        $this->get_remote_release();
+
+        if (!function_exists('wp_update_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/update.php';
+        }
+
+        wp_update_plugins();
+    }
+
+    /**
+     * The cached release, without ever asking GitHub
+     *
+     * @since 1.13.0
+     * @return array Normalised release data; "version" is empty when unknown
+     */
+    private function get_cached_release() {
+        $cached = get_transient(self::CACHE_KEY);
+
+        return is_array($cached) ? $cached : ['version' => ''];
     }
 
     /**
@@ -463,7 +614,34 @@ class HRB_Updater {
             'requires_php' => $header_data['requires_php'],
         ];
 
-        set_transient(self::CACHE_KEY, $data, self::cache_ttl_for($data['version'], HRB_VERSION));
+        /**
+         * How long to hold this answer, in seconds.
+         *
+         * Return 0 for no cache at all. Be careful: this lookup runs when
+         * WordPress builds its update list, and unauthenticated GitHub
+         * allows 60 calls an hour from one address. Exceed that and GitHub
+         * answers 403, which this class caches as "no release" - so an
+         * over-eager setting produces fewer update notices, not more.
+         * Defining HRB_GITHUB_TOKEN raises the ceiling to 5000 an hour and
+         * makes an aggressive value safe.
+         *
+         * @since 1.13.0
+         * @param int    $ttl               Seconds to cache for
+         * @param string $remote_version    Latest released version
+         * @param string $installed_version Version running here
+         */
+        $ttl = (int) apply_filters(
+            'hrb_release_cache_ttl',
+            self::cache_ttl_for($data['version'], HRB_VERSION),
+            $data['version'],
+            HRB_VERSION
+        );
+
+        if ($ttl > 0) {
+            set_transient(self::CACHE_KEY, $data, $ttl);
+        } else {
+            delete_transient(self::CACHE_KEY);
+        }
 
         return $data;
     }
