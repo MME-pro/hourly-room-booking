@@ -2196,3 +2196,9 @@ msgstr "GitHub answered %d"
 
 msgid "No published release found"
 msgstr "No published release found"
+
+msgid "The earliest time a booking may start (24-hour format, e.g., 08:00)."
+msgstr "The earliest time a booking may start (24-hour format, e.g., 08:00)."
+
+msgid "The latest time a booking may START (24-hour format, e.g., 23:30) — not the time it has to be finished by. A booking that starts at this time runs its full length, past this time and past midnight: with 23:30 here, a 3-hour booking makes 23:30–02:30 the last slot offered."
+msgstr "The latest time a booking may START (24-hour format, e.g., 23:30) — not the time it has to be finished by. A booking that starts at this time runs its full length, past this time and past midnight: with 23:30 here, a 3-hour booking makes 23:30–02:30 the last slot offered."

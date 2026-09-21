@@ -352,24 +352,20 @@ class HRB_Booking_Manager {
             return new WP_Error('room_locked', __('The room is locked for maintenance at the selected time.', 'hourly-room-booking'));
         }
 
-        // Are we open for business right now?
+        // Validate the booking window ("Booking Start Time" / "Booking End Time")
         //
-        // "Booking Opening Time" and "Booking Closing Time" are the hours in
-        // which a booking may be *taken*, like an office's opening hours. They
-        // say nothing about which slot is being booked: a customer who walks in
-        // at 23:00, while the desk is still open, may book a room for 05:00 the
-        // next morning, and that booking is fine. What is refused is taking a
-        // booking at 23:45, when the place is shut.
-        //
-        // Admins are exempt, as they are from the past-date, advance-window and
-        // duration rules: they are the desk, and they occasionally have to put
-        // a booking right after hours.
-        $opens  = get_option('hrb_booking_start_time', '08:00');
-        $closes = get_option('hrb_booking_end_time', '20:00');
+        // The window bounds when a booking may *start*. The end is the latest
+        // time a slot may open at, not the time everything has to be over by:
+        // with a 23:30 end and a three-hour booking the last slot is
+        // 23:30-02:30, which runs past the window and past midnight and is a
+        // perfectly good booking. Only the start is measured. How long it then
+        // runs is the duration rules' business, above.
+        $business_start = get_option('hrb_booking_start_time', '08:00');
+        $business_end   = get_option('hrb_booking_end_time', '20:00');
 
-        if (!$is_admin_context && !self::is_time_within_window(self::now_time(), $opens, $closes)) {
+        if (!self::is_time_within_window($data['start_time'], $business_start, $business_end)) {
             return new WP_Error('outside_business_hours',
-                sprintf(__('Bookings can only be made between %s and %s', 'hourly-room-booking'), $opens, $closes));
+                sprintf(__('Bookings can only start between %s and %s', 'hourly-room-booking'), $business_start, $business_end));
         }
 
         return true;
@@ -393,29 +389,29 @@ class HRB_Booking_Manager {
         $m = isset($parts[1]) ? intval($parts[1]) : 0;
         return $h * 60 + $m;
     }
+
     /**
-     * Does a time of day fall inside a window?
+     * Does a time of day fall inside the booking window?
      *
-     * Used for the booking hours: "Booking Opening Time" and "Booking Closing
-     * Time" are the hours in which a booking may be *taken*. The time handed
-     * in is therefore the clock on the wall, not the slot being booked - which
-     * slot a customer chooses is none of this window's business, and a booking
-     * taken at 23:00 for 05:00 tomorrow is a perfectly ordinary booking.
+     * Used for "Booking Start Time" and "Booking End Time", which bound when a
+     * booking may *start*. The end is the latest time a slot may open at, not
+     * the time everything must be over by: with a 23:30 end and a three-hour
+     * booking the last slot is 23:30-02:30, and that is the intent. How long a
+     * booking runs once it has started is not this window's business.
      *
-     * Both ends are inclusive. Someone who types 09:00-23:00 means 23:00 to
-     * still count as open, not to be the first minute that is refused.
+     * Both ends are inclusive. Someone who types 08:00-23:30 means 23:30 to be
+     * a startable time, not the first one that is refused.
      *
-     * A closing time of 00:00 (or 24:00) is midnight at the *end* of the day,
-     * so it leaves the day open rather than closing it before it starts.
+     * An end of 00:00 (or 24:00) is midnight at the *end* of the day, so it
+     * leaves the whole day open rather than closing it before it starts.
      *
      * A window whose end is earlier than its start wraps around midnight:
      * 20:00-02:00 means the evening and the small hours, not "nothing".
      *
      * @since 1.12.0
-     * @since 1.14.0 Measures the clock, not the slot; renamed to match.
-     * @param string $time         Time of day to test, H:i or H:i:s
-     * @param string $window_start Opening time
-     * @param string $window_end   Closing time
+     * @param string $time         Proposed booking start, H:i or H:i:s
+     * @param string $window_start "Booking Start Time" setting
+     * @param string $window_end   "Booking End Time" setting
      * @return bool
      */
     public static function is_time_within_window($time, $window_start, $window_end) {
@@ -443,30 +439,6 @@ class HRB_Booking_Manager {
      * @param string $time
      * @return int
      */
-    /**
-     * The time on the wall, in the timezone the plugin is set to
-     *
-     * The booking hours are an office's opening hours, so they have to be
-     * read against local time rather than the server's, which on shared
-     * hosting is often UTC and would close the desk hours early or late.
-     *
-     * @since 1.14.0
-     * @return string H:i
-     */
-    public static function now_time() {
-        $zone = get_option('hrb_timezone', 'Europe/Berlin');
-
-        try {
-            $now = new DateTime('now', new DateTimeZone($zone));
-        } catch (Exception $e) {
-            // An unusable timezone setting should not stop bookings; fall
-            // back to whatever WordPress itself considers local time.
-            return function_exists('current_time') ? current_time('H:i') : date('H:i');
-        }
-
-        return $now->format('H:i');
-    }
-
     private static function minutes_of_day($time) {
         $parts = explode(':', (string) $time);
         $h = intval($parts[0]);

@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-09-21
+
+### Changed
+- **The booking window bounds the slot's start again, as it did in 1.12.0.** 1.14.0 read these two settings as an office's opening hours — the clock on the wall when a booking is placed — and that was the wrong reading. They bound when a **booking may start**, and the end is the latest time a slot may *open* at, not the time everything must be finished by. With `Booking End Time` at 23:30 and a three-hour booking, the last slot offered is **23:30–02:30**: it runs past the window and past midnight, which is the whole point. The wall-clock check on submission is gone, along with the timezone helper it needed.
+- **The time-slot picker, the calendar's slot list and both search filters filter by the window again**, so the last slot offered is the last one that can actually be saved.
+- **The settings are called "Booking Start Time" and "Booking End Time" again.** 1.13.1 renamed them to Opening/Closing on the 1.14.0 reading; with the slot meaning restored the old names fit, and the description now spells out the case that caused the confusion: the end is the latest time a booking may START, not the time it has to be over by, with the 23:30 → 23:30–02:30 example written out.
+
+### Note
+- **Check the two settings after upgrading.** A site that was set up under 1.14.0's reading has its real opening hours in these fields; under this release the end is the last *startable* time. For "bookings can start any time from 08:00 until 23:30, whatever their length", set 08:00 and 23:30.
+- Nothing else from 1.15.0 moves: the Admin/Employee split, the Amount column for the desk, the Payments screen, the calendar's past/future rule and the update fixes are all unchanged.
+
 ## [1.15.0] - 2026-09-21
 
 ### Added

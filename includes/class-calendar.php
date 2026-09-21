@@ -316,10 +316,17 @@ class HRB_Calendar {
     public function get_available_time_slots(int $room_id, string $date): array {
         $slots = [];
         
-        // Every hour is bookable. The booking-hours settings say when a
-        // booking may be taken, not which slot may be chosen, so they have
-        // no say here.
+        // The settings bound when a booking may start, not how long it runs,
+        // so an hour is offered on the strength of its start alone and the
+        // two hours that follow are free to cross midnight.
+        $booking_start_time = get_option('hrb_booking_start_time', '08:00');
+        $booking_end_time = get_option('hrb_booking_end_time', '20:00');
+
         for ($hour = 0; $hour < 24; $hour++) {
+            if (!HRB_Booking_Manager::is_time_within_window(sprintf('%02d:00', $hour), $booking_start_time, $booking_end_time)) {
+                continue;
+            }
+
             $start_time = sprintf('%02d:00:00', $hour);
             $end_time = sprintf('%02d:00:00', ($hour + 2) % 24); // Minimum 2 hours
 

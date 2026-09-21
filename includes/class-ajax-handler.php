@@ -1344,14 +1344,19 @@ class HRB_Ajax_Handler {
         ));
 
 
-        // Every hour of the day is bookable. The "Booking Opening Time" and
-        // "Booking Closing Time" settings do not belong here at all: they say
-        // when a booking may be *taken*, not which slot may be chosen, and are
-        // checked against the clock when the booking is saved.
+        // When a booking may start here. Two windows have a say: the
+        // "Booking Start Time" / "Booking End Time" settings, and the room's
+        // own bookable hours where it has them. Both have to allow the start,
+        // because the save checks both - the picker must not offer a slot that
+        // would then be refused.
         //
-        // A room's own bookable hours are a different thing and do belong here
-        // - a room shut at 03:00 cannot host a booking starting then - so the
-        // picker still honours those where a room has them set.
+        // Neither says anything about how long the booking runs. With a 23:30
+        // end and a three-hour booking the last slot offered is 23:30-02:30:
+        // the start is inside the window, and where it finishes is the
+        // duration rules' business.
+        $window_start = get_option('hrb_booking_start_time', '08:00');
+        $window_end   = get_option('hrb_booking_end_time', '20:00');
+
         $room_window_start = null;
         $room_window_end   = null;
 
@@ -1386,7 +1391,10 @@ class HRB_Ajax_Handler {
                 $start_minutes = ($hour * 60) + intval($minute);
                 $slot_start = sprintf('%02d:%s', $hour, $minute);
 
-                // Only the room's own hours can rule a slot out here.
+                // Is this an hour a booking may be started in?
+                if (!HRB_Booking_Manager::is_time_within_window($slot_start, $window_start, $window_end)) {
+                    continue;
+                }
                 if ($room_window_start !== null
                     && !HRB_Booking_Manager::is_time_within_window($slot_start, $room_window_start, $room_window_end)) {
                     continue;

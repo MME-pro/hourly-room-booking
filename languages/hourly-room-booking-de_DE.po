@@ -4313,3 +4313,9 @@ msgstr "GitHub antwortete %d"
 
 msgid "No published release found"
 msgstr "Keine veröffentlichte Version gefunden"
+
+msgid "The earliest time a booking may start (24-hour format, e.g., 08:00)."
+msgstr "Die früheste Zeit, zu der eine Buchung beginnen darf (24-Stunden-Format, z.B. 08:00)."
+
+msgid "The latest time a booking may START (24-hour format, e.g., 23:30) — not the time it has to be finished by. A booking that starts at this time runs its full length, past this time and past midnight: with 23:30 here, a 3-hour booking makes 23:30–02:30 the last slot offered."
+msgstr "Die späteste Zeit, zu der eine Buchung BEGINNEN darf (24-Stunden-Format, z.B. 23:30) – nicht die Zeit, bis zu der sie beendet sein muss. Eine Buchung, die zu dieser Zeit beginnt, läuft in voller Länge weiter – über diese Zeit und über Mitternacht hinaus: bei 23:30 ist für eine 3-Stunden-Buchung 23:30–02:30 der letzte angebotene Zeitraum."
