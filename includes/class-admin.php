@@ -2317,7 +2317,8 @@ class HRB_Admin {
                     'id' => $event->id,
                     'title' => $title,
                     'start' => $event->booking_date . 'T' . $event->start_time,
-                    'end' => $event->booking_date . 'T' . $event->end_time,
+                    // A booking running past midnight ends on the next day.
+                    'end' => HRB_Booking_Manager::end_datetime($event->booking_date, $event->start_time, $event->end_time),
                     'backgroundColor' => $room_color,
                     'borderColor' => $room_color,
                     'textColor' => '#fff',

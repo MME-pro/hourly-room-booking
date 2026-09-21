@@ -118,28 +118,18 @@ $subtitle = isset($atts['subtitle']) ? $atts['subtitle'] : __('Search and book r
                 <select id="hrb-filter-time" name="time">
                     <option value=""><?php _e('Any time', 'hourly-room-booking'); ?></option>
                     <?php
-                    // Get booking time range from settings
+                    // The times a booking may start at: every half hour the
+                    // booking window allows, its end included.
                     $booking_start_time = get_option('hrb_booking_start_time', '08:00');
                     $booking_end_time = get_option('hrb_booking_end_time', '20:00');
-                    
-                    // Parse start and end times
-                    $start_hour = intval(substr($booking_start_time, 0, 2));
-                    $end_hour = intval(substr($booking_end_time, 0, 2));
-                    
-                    // Generate time options based on settings (30-minute intervals)
-                    for ($hour = $start_hour; $hour <= $end_hour; $hour++) {
-                        // Add :00 option
-                        $time_value = sprintf('%02d:00', $hour);
-                        $selected = isset($_GET['time']) ? $_GET['time'] : '';
-                        echo '<option value="' . esc_attr($time_value) . '" ' . selected($selected, $time_value, false) . '>' . esc_html($time_value) . '</option>';
-                        
-                        // Add :30 option (except for the last hour if it ends exactly on the hour)
-                        $booking_end_hour = intval(substr($booking_end_time, 0, 2));
-                        $booking_end_minute = intval(substr($booking_end_time, 3, 2));
-                        
-                        // Only add :30 if it's not the last hour or if the end time has minutes
-                        if ($hour < $booking_end_hour || ($hour == $booking_end_hour && $booking_end_minute > 0)) {
-                            $time_value = sprintf('%02d:30', $hour);
+                    $selected = isset($_GET['time']) ? $_GET['time'] : '';
+
+                    for ($hour = 0; $hour < 24; $hour++) {
+                        foreach (['00', '30'] as $minute) {
+                            $time_value = sprintf('%02d:%s', $hour, $minute);
+                            if (!HRB_Booking_Manager::is_start_within_booking_window($time_value, $booking_start_time, $booking_end_time)) {
+                                continue;
+                            }
                             echo '<option value="' . esc_attr($time_value) . '" ' . selected($selected, $time_value, false) . '>' . esc_html($time_value) . '</option>';
                         }
                     }

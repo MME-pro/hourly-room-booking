@@ -5,6 +5,25 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-09-21
+
+### Changed
+- **"Booking Start Time" and "Booking End Time" now bound when a booking may *start*, not when it must be over.** The two settings exist because someone has to be there to take the booking; how long the session then runs was never their business. A booking starting at 23:30 in an 08:00–23:30 window runs its full length — five hours, six, past midnight — and is no longer refused for ending "after closing". What the window still refuses is a booking *starting* outside it. Both ends are inclusive: a window ending 23:30 makes 23:30 itself bookable, so an end of 20:00 now offers a 20:00 start where it used to stop at 18:00. **Sites that set the end time to mean "must be finished by" should move it to the last time they want a booking taken.**
+- **A room's own "Bookable hours" follow the same rule.** They say when a booking in that room may begin; what happens after midnight is not their concern. Rooms left at the 00:00–24:00 default are unaffected.
+- **Both windows have to allow a start, rather than the room's hours replacing the global ones.** The picker used to offer slots inside a room's hours that the save then rejected for being outside the global window.
+- The `[room_calendar]` grid covers the whole day instead of stopping at the booking window, so the hours a late booking runs into are visible. The window itself is still marked as business hours.
+
+### Fixed
+- **Admins could never book more than 12 hours, despite being allowed 24.** `validate_booking_data()` carried a duplicate duration check, hardcoded to 12, that ran after the admin allowance and overruled it. The duplicate is gone.
+- **The time-slot endpoint refused any duration over 12 hours for everyone**, while the admin booking form offers 2–24. It now matches the save: 12 hours for the public, 24 for a capability-checked admin.
+- **A booking running past midnight was drawn as an event ending before it began.** The calendar feeds pasted the end time onto the booking's own date, so 23:30–05:00 read as a negative span. New `HRB_Booking_Manager::end_datetime()` rolls the end to the next day.
+- The search and filter time dropdowns came out empty when the end time was set to `00:00`, because the hour loop ran from 8 down to 0. They ask the window rule now, like everything else.
+- `HRB_Calendar::get_available_time_slots()` could build an end time of `25:00:00` for a slot starting at 23:00.
+
+### Note
+- One rule decides all of this — `HRB_Booking_Manager::is_start_within_booking_window()` — and the save path, the slot picker, both calendars and the two search filters all ask it, so they cannot drift apart. It reads an end of `00:00` or `24:00` as midnight at the end of the day, and a window whose end precedes its start (20:00–02:00) as wrapping midnight. Covered by `tests/unit/test-booking-window.php`.
+- **Extras stock is not yet cross-midnight aware.** `HRB_Extra_Stock_Manager` matches overlapping bookings by date plus time-of-day, so the hours an overnight booking runs into the next day are not counted against an extra's stock and the same item could be taken twice there. This was already reachable with an end time of `24:00`; it is more reachable now.
+
 ## [1.11.5] - 2026-09-10
 
 ### Fixed

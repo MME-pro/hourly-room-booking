@@ -227,7 +227,8 @@ class HRB_Calendar {
 
         foreach ($bookings as $booking) {
             $start_datetime = $booking['booking_date'] . 'T' . $booking['start_time'];
-            $end_datetime = $booking['booking_date'] . 'T' . $booking['end_time'];
+            // A booking running past midnight ends on the next day.
+            $end_datetime = HRB_Booking_Manager::end_datetime($booking['booking_date'], $booking['start_time'], $booking['end_time']);
 
             // Calculate cooldown end time (30 minutes after booking end)
             $cooldown_end = date('H:i:s', strtotime($booking['end_time'] . ' +30 minutes'));
@@ -315,21 +316,19 @@ class HRB_Calendar {
     public function get_available_time_slots(int $room_id, string $date): array {
         $slots = [];
         
-        // Get booking time range from settings
+        // The settings bound when a booking may start, not how long it may run,
+        // so an hour is offered on the strength of its start alone and the two
+        // hours that follow are free to cross midnight.
         $booking_start_time = get_option('hrb_booking_start_time', '08:00');
         $booking_end_time = get_option('hrb_booking_end_time', '20:00');
-        
-        // Parse start and end times
-        $start_hour = intval(substr($booking_start_time, 0, 2));
-        $end_hour = intval(substr($booking_end_time, 0, 2));
-        // An end time of 00:00 means midnight / end of day (24:00), not start of day.
-        if ($end_hour === 0 && intval(substr($booking_end_time, 3, 2)) === 0) {
-            $end_hour = 24;
-        }
 
-        for ($hour = $start_hour; $hour < $end_hour; $hour++) {
+        for ($hour = 0; $hour < 24; $hour++) {
+            if (!HRB_Booking_Manager::is_start_within_booking_window(sprintf('%02d:00', $hour), $booking_start_time, $booking_end_time)) {
+                continue;
+            }
+
             $start_time = sprintf('%02d:00:00', $hour);
-            $end_time = sprintf('%02d:00:00', $hour + 2); // Minimum 2 hours
+            $end_time = sprintf('%02d:00:00', ($hour + 2) % 24); // Minimum 2 hours
 
             if ($this->check_room_availability($room_id, $date, $start_time, $end_time)) {
                 $slots[] = [

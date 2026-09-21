@@ -324,7 +324,7 @@ if ($filter_status !== 'all') {
                             <input type="text" name="room_available_from" id="room_available_from" value="00:00" placeholder="00:00" maxlength="5" inputmode="numeric" style="max-width:110px; text-align:center;">
                             <span style="margin:0 8px;"><?php _e('to', 'hourly-room-booking'); ?></span>
                             <input type="text" name="room_available_to" id="room_available_to" value="24:00" placeholder="24:00" maxlength="5" inputmode="numeric" style="max-width:110px; text-align:center;">
-                            <p class="description"><?php _e('General bookable window for this room, in 24-hour format (0–24). 00:00 to 24:00 means bookable around the clock. Example: 09:00 to 23:00. Cleaning time after the end is not included.', 'hourly-room-booking'); ?></p>
+                            <p class="description"><?php _e('When a booking in this room may start, in 24-hour format (0-24). 00:00 to 24:00 means bookable around the clock. Example: 09:00 to 23:00. A booking starting inside the window runs its full length, past the end time and past midnight.', 'hourly-room-booking'); ?></p>
                         </td>
                     </tr>
                     <tr>

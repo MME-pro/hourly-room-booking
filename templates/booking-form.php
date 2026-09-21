@@ -2880,21 +2880,19 @@ $label_no_slots_message = $settings->get_label('hrb_label_no_slots_message');
             
             // Convert to minutes for easier calculation
             const startTimeMinutes = startHour * 60 + startMinute;
-            const endTimeMinutes = endHour * 60 + endMinute;
+            // An end of 00:00 is midnight at the end of the day.
+            const endTimeMinutes = (endHour * 60 + endMinute) || 1440;
             const durationMinutes = durationHours * 60;
-            
-            // Generate time slots in 30-minute intervals
-            for (let timeMinutes = startTimeMinutes; timeMinutes <= endTimeMinutes - durationMinutes; timeMinutes += 30) {
+
+            // Generate time slots in 30-minute intervals. The window bounds
+            // when a booking may start, so a slot is kept on the strength of
+            // its start alone and may run past the window's end and midnight.
+            for (let timeMinutes = startTimeMinutes; timeMinutes <= endTimeMinutes; timeMinutes += 30) {
                 const startHourSlot = Math.floor(timeMinutes / 60);
                 const startMinuteSlot = timeMinutes % 60;
-                const endTimeMinutesSlot = timeMinutes + durationMinutes;
+                const endTimeMinutesSlot = (timeMinutes + durationMinutes) % 1440;
                 const endHourSlot = Math.floor(endTimeMinutesSlot / 60);
                 const endMinuteSlot = endTimeMinutesSlot % 60;
-                
-                // Skip this slot if it exceeds the end time
-                if (endTimeMinutesSlot > endTimeMinutes) {
-                    continue;
-                }
                 
                 const startTime = String(startHourSlot).padStart(2, '0') + ':' + String(startMinuteSlot).padStart(2, '0');
                 const endTime = (endHourSlot === 24 && endMinuteSlot === 0)

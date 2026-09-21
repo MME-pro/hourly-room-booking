@@ -652,12 +652,23 @@ class HRB_Room_Manager {
     }
 
     /**
-     * Whether a booking [start,end] falls inside the room's general bookable window.
-     * available_from/available_to of '00:00:00'/'00:00:00' means fully bookable (24h).
-     * An end time of 00:00 counts as midnight (end of day). Cross-midnight bookings are
-     * only allowed when the room is fully bookable.
+     * Whether a booking may *start* inside the room's bookable window.
+     *
+     * The room's hours, like the global "Booking Start/End Time" settings, say
+     * when a booking may begin — not how long it may then run. A room open
+     * 08:00-23:30 can hold a session that starts at 23:30 and ends at 05:00;
+     * what the window refuses is a booking *starting* at 03:00. Both ends are
+     * inclusive, so the closing time named is itself bookable.
+     *
+     * available_from/available_to of '00:00:00'/'00:00:00' means fully bookable
+     * (24h). An available_to of 00:00 counts as midnight, the end of the day.
+     *
+     * @since 1.12.0 Bounds the start only; used to bound the whole booking.
+     * @param object $room       Room row
+     * @param string $start_time Proposed start, H:i or H:i:s
+     * @return bool
      */
-    public function is_time_within_availability($room, $start_time, $end_time) {
+    public function is_start_within_availability($room, $start_time) {
         $from = (is_object($room) && isset($room->available_from)) ? $room->available_from : '00:00:00';
         $to   = (is_object($room) && isset($room->available_to)) ? $room->available_to : '00:00:00';
         $from_min = (intval(substr($from, 0, 2)) * 60) + intval(substr($from, 3, 2));
@@ -666,10 +677,10 @@ class HRB_Room_Manager {
             return true; // fully bookable
         }
         $s = (intval(substr($start_time, 0, 2)) * 60) + intval(substr($start_time, 3, 2));
-        $e = (intval(substr($end_time, 0, 2)) * 60) + intval(substr($end_time, 3, 2));
-        if ($e === 0) { $e = 1440; }
-        if ($e <= $s) { return false; } // cross-midnight not allowed within a restricted window
-        return ($s >= $from_min && $e <= $to_min);
+        if ($from_min <= $to_min) {
+            return ($s >= $from_min && $s <= $to_min);
+        }
+        return ($s >= $from_min || $s <= $to_min); // window wraps midnight
     }
 
     /**
@@ -728,7 +739,7 @@ class HRB_Room_Manager {
         $result = [];
 
         foreach ($rooms as $room) {
-            $in_window = $this->is_time_within_availability($room, $start_time, $end_time);
+            $in_window = $this->is_start_within_availability($room, $start_time);
 
             // Only ask the database when the room could be used at all.
             $has_conflict = false;

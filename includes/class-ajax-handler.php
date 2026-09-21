@@ -507,7 +507,8 @@ class HRB_Ajax_Handler {
 
         foreach ($bookings as $booking) {
             $start_datetime = $booking->booking_date . 'T' . $booking->start_time;
-            $end_datetime = $booking->booking_date . 'T' . $booking->end_time;
+            // A booking running past midnight ends on the next day.
+            $end_datetime = HRB_Booking_Manager::end_datetime($booking->booking_date, $booking->start_time, $booking->end_time);
 
             $status_text = ($booking->status === 'confirmed') ? __('Confirmed', 'hourly-room-booking') : __('Pending', 'hourly-room-booking');
             $customer_name = trim($booking->first_name . ' ' . $booking->last_name) ?: __('Unknown', 'hourly-room-booking');
@@ -1201,9 +1202,13 @@ class HRB_Ajax_Handler {
             wp_send_json_error(__('Missing required parameters', 'hourly-room-booking'));
         }
 
-        // Validate duration (2-12 hours)
-        if ($duration < 2 || $duration > 12) {
-            wp_send_json_error(__('Invalid duration. Must be between 2-12 hours', 'hourly-room-booking'));
+        // Validate duration. The public cap is 12 hours; an admin may go to 24,
+        // the same allowance HRB_Booking_Manager::validate_booking_data() makes
+        // on save and the same range the admin form's duration list offers.
+        $has_admin_cap = current_user_can('hrb_manage_bookings') || current_user_can('manage_options');
+        $max_duration  = ($is_admin_param && $has_admin_cap) ? 24 : 12;
+        if ($duration < 2 || $duration > $max_duration) {
+            wp_send_json_error(sprintf(__('Invalid duration. Must be between 2 and %d hours', 'hourly-room-booking'), $max_duration));
         }
 
         $room_manager = HRB_Room_Manager::getInstance();
@@ -1339,27 +1344,19 @@ class HRB_Ajax_Handler {
         ));
 
 
-        // Get booking time range from settings
-        $booking_start_time = get_option('hrb_booking_start_time', '08:00');
-        $booking_end_time = get_option('hrb_booking_end_time', '20:00');
-        
-        
-        // Parse start and end times
-        $start_hour = intval(substr($booking_start_time, 0, 2));
-        $end_hour = intval(substr($booking_end_time, 0, 2));
+        // When a booking may start here. Two windows have a say: the
+        // "Booking Start Time" / "Booking End Time" settings, and the room's
+        // own bookable hours where it has them. Both have to allow the start,
+        // because the save checks both — the picker must not offer a slot that
+        // would then be refused. Neither window says anything about how long
+        // the booking runs: that is the duration rules' business, and a slot
+        // running past the window's end, or past midnight, is still offered.
+        $window_start = get_option('hrb_booking_start_time', '08:00');
+        $window_end   = get_option('hrb_booking_end_time', '20:00');
 
-        // Parse end time properly to handle minutes
-        $end_hour = intval(substr($booking_end_time, 0, 2));
-        $end_minute = intval(substr($booking_end_time, 3, 2));
-        $booking_end_minutes = $end_hour * 60 + $end_minute;
+        $room_window_start = null;
+        $room_window_end   = null;
 
-        // An end time of 00:00 means midnight / end of day (24:00), not start of day.
-        if ($booking_end_minutes === 0) {
-            $booking_end_minutes = 1440;
-            $end_hour = 23;
-        }
-
-        // Per-room bookable window overrides the global window when the room has one set.
         $hrb_slot_room = HRB_Room_Manager::getInstance()->get_room($room_id);
         if ($hrb_slot_room && (!empty($hrb_slot_room->available_from) || !empty($hrb_slot_room->available_to))) {
             $hrb_af = $hrb_slot_room->available_from ?: '00:00:00';
@@ -1367,9 +1364,8 @@ class HRB_Ajax_Handler {
             $hrb_af_min = (intval(substr($hrb_af, 0, 2)) * 60) + intval(substr($hrb_af, 3, 2));
             $hrb_at_min = ($hrb_at === '00:00:00' || $hrb_at === '00:00') ? 1440 : ((intval(substr($hrb_at, 0, 2)) * 60) + intval(substr($hrb_at, 3, 2)));
             if (!($hrb_af_min <= 0 && $hrb_at_min >= 1440)) {
-                $start_hour = intdiv($hrb_af_min, 60);
-                $end_hour = min(23, intdiv($hrb_at_min, 60));
-                $booking_end_minutes = $hrb_at_min;
+                $room_window_start = $hrb_af;
+                $room_window_end   = $hrb_at;
             }
         }
         
@@ -1386,31 +1382,27 @@ class HRB_Ajax_Handler {
         
         
         
-        for ($hour = $start_hour; $hour <= $end_hour; $hour++) {
+        for ($hour = 0; $hour < 24; $hour++) {
             // Check both :00 and :30 minute slots
             foreach (['00', '30'] as $minute) {
                 $start_minutes = ($hour * 60) + intval($minute);
-                // If start is at or beyond end, skip
-                if ($start_minutes >= $booking_end_minutes) {
+                $slot_start = sprintf('%02d:%s', $hour, $minute);
+
+                // Is this an hour a booking may be started in?
+                if (!HRB_Booking_Manager::is_start_within_booking_window($slot_start, $window_start, $window_end)) {
+                    continue;
+                }
+                if ($room_window_start !== null
+                    && !HRB_Booking_Manager::is_start_within_booking_window($slot_start, $room_window_start, $room_window_end)) {
                     continue;
                 }
 
                 $start_time = sprintf('%02d:%s:00', $hour, $minute);
 
                 // Has this slot already started?
-                $slot_time = sprintf('%02d:%s', $hour, $minute);
-                $is_past_time = self::is_slot_in_past($date, $slot_time, $today, $current_time);
-                
-                
+                $is_past_time = self::is_slot_in_past($date, $slot_start, $today, $current_time);
+
                 $slot_end_minutes = $start_minutes + ($duration * 60);
-
-                // Allow crossing midnight when booking end time is 24:00
-                $allow_cross_midnight = ($booking_end_minutes === 1440);
-
-                // Check if slot ends after the configured end time (only block if not allowed to cross)
-                if (!$allow_cross_midnight && $slot_end_minutes > $booking_end_minutes) {
-                    continue;
-                }
 
                 // Build end time string (support crossing midnight)
                 if ($slot_end_minutes >= 1440) {
@@ -1479,7 +1471,7 @@ class HRB_Ajax_Handler {
                 // Note: For admin, even if locked, $is_available remains true (if no real conflicts)
                 
                 // Past slots stay closed to the public; admins keep them.
-                if (self::is_slot_blocked_as_past($date, $slot_time, $today, $current_time, $is_admin_request)) {
+                if (self::is_slot_blocked_as_past($date, $slot_start, $today, $current_time, $is_admin_request)) {
                     $is_available = false;
                 }
                 

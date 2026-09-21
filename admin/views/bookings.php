@@ -119,8 +119,7 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                 $new_end_time = $adj_booking->end_time;
                 if ($add_hours > 0) {
                     $new_end_time = date('H:i:s', strtotime($adj_booking->start_time) + (int) round($new_hours * 3600));
-                    if (HRB_Database::check_booking_conflict($adj_booking->room_id, $adj_booking->booking_date, $adj_booking->start_time, $new_end_time, $post_booking_id)
-                        || !$room_manager->is_time_within_availability($adj_room, $adj_booking->start_time, $new_end_time)) {
+                    if (HRB_Database::check_booking_conflict($adj_booking->room_id, $adj_booking->booking_date, $adj_booking->start_time, $new_end_time, $post_booking_id)) {
                         set_transient('hrb_admin_booking_error', __('The extended time slot is not available.', 'hourly-room-booking'), 30);
                         ?><script>window.location.href='<?php echo admin_url('admin.php?page=hrb-bookings&action=adjust&id=' . $post_booking_id); ?>';</script><?php
                         break;
@@ -3343,7 +3342,6 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         for ($h = 1; $h <= $adj_cap; $h++) {
             $test_end = date('H:i:s', strtotime($booking->start_time) + (int) round(((float) $booking->total_hours + $h) * 3600));
             if (HRB_Database::check_booking_conflict($booking->room_id, $booking->booking_date, $booking->start_time, $test_end, (int) $booking->id)) { break; }
-            if (!$room_manager->is_time_within_availability($adj_room_obj, $booking->start_time, $test_end)) { break; }
             $adj_max_add_hours = $h;
         }
         // Precompute the exact hours cost (tiered room pricing) for each possible additional-hours value.

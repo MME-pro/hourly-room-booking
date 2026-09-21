@@ -338,9 +338,10 @@ class HRB_Booking_Manager {
             return new WP_Error('payment_method_required', __('Bookings of 4 hours or more require PayPal payment', 'hourly-room-booking'));
         }
 
-        // Enforce the room's general bookable window (per-room availability hours).
-        if (!empty($data['start_time']) && !empty($data['end_time'])
-            && !HRB_Room_Manager::getInstance()->is_time_within_availability($room, $data['start_time'], $data['end_time'])) {
+        // Enforce the room's own bookable hours. Like the global window they
+        // bound when the booking may start, not how long it runs.
+        if (!empty($data['start_time'])
+            && !HRB_Room_Manager::getInstance()->is_start_within_availability($room, $data['start_time'])) {
             return new WP_Error('outside_availability', __('The room is not bookable at the selected time.', 'hourly-room-booking'));
         }
 
@@ -351,49 +352,19 @@ class HRB_Booking_Manager {
             return new WP_Error('room_locked', __('The room is locked for maintenance at the selected time.', 'hourly-room-booking'));
         }
 
-        // Validate time slots (already calculated duration above)
-        
-        if ($duration < 2) {
-            return new WP_Error('min_duration', __('Minimum booking duration is 2 hours', 'hourly-room-booking'));
-        }
-        
-        if ($duration > 12) {
-            return new WP_Error('max_duration', __('Maximum booking duration is 12 hours', 'hourly-room-booking'));
-        }
-        
-        // Validate business hours (allow cross-midnight when end time < start time and end limit is 24:00)
+        // Validate the booking window ("Booking Start Time" / "Booking End Time")
+        //
+        // The window says when a booking may *begin*, not how long it may run.
+        // It is there because a person has to be around to take the booking, so
+        // it bounds the start and nothing else: a session that starts at 23:30
+        // and runs six hours past midnight is a perfectly good booking. The far
+        // end is bounded by the duration rule above and by nothing else.
         $business_start = get_option('hrb_booking_start_time', '08:00');
-        $business_end = get_option('hrb_booking_end_time', '20:00');
-        $allow_cross_midnight = ($business_end === '24:00' || $business_end === '24:00:00');
+        $business_end   = get_option('hrb_booking_end_time', '20:00');
 
-        $start_minutes = $this->time_to_minutes($data['start_time']);
-        $end_minutes   = $this->time_to_minutes($data['end_time']);
-        $business_start_minutes = $this->time_to_minutes($business_start);
-        $business_end_minutes   = $this->time_to_minutes($business_end);
-
-        // Start must be within window
-        if ($start_minutes < $business_start_minutes) {
-            return new WP_Error('outside_business_hours', 
-                sprintf(__('Bookings must be between %s and %s', 'hourly-room-booking'), $business_start, $business_end));
-        }
-
-        // Compute slot end minutes relative to start (handle cross-midnight)
-        $slot_end_minutes = $end_minutes;
-        if ($end_minutes <= $start_minutes) {
-            $slot_end_minutes += 24 * 60; // next day
-        }
-
-        // Business end boundary
-        // If end is 24:00 and slot crosses midnight, allow up to next-day 24:00 (i.e., +24h window)
-        $max_end_minutes = $allow_cross_midnight ? ($business_end_minutes + 24 * 60) : $business_end_minutes;
-
-        if (!$allow_cross_midnight && $slot_end_minutes > $business_end_minutes) {
-            return new WP_Error('outside_business_hours', 
-                sprintf(__('Bookings must be between %s and %s', 'hourly-room-booking'), $business_start, $business_end));
-        }
-        if ($allow_cross_midnight && $slot_end_minutes > $max_end_minutes) {
-            return new WP_Error('outside_business_hours', 
-                sprintf(__('Bookings must be between %s and %s', 'hourly-room-booking'), $business_start, $business_end));
+        if (!self::is_start_within_booking_window($data['start_time'], $business_start, $business_end)) {
+            return new WP_Error('outside_business_hours',
+                sprintf(__('Bookings can only start between %s and %s', 'hourly-room-booking'), $business_start, $business_end));
         }
         
         return true;
@@ -416,6 +387,88 @@ class HRB_Booking_Manager {
         $h = intval($parts[0]);
         $m = isset($parts[1]) ? intval($parts[1]) : 0;
         return $h * 60 + $m;
+    }
+
+    /**
+     * May a booking start at this time?
+     *
+     * The "Booking Start Time" / "Booking End Time" settings describe when a
+     * booking may be *started*, not how long it may then run: someone has to be
+     * around to take the booking, and that is the only thing the window is
+     * about. A booking that starts inside it may run its full length, past the
+     * end of the window and past midnight.
+     *
+     * Both ends are inclusive. An admin who types 08:00-23:30 means 23:30 to be
+     * bookable; the setting is read as the last startable time, not as the first
+     * one that is refused.
+     *
+     * An end of 00:00 (or 24:00) is midnight at the *end* of the day, so it
+     * leaves the whole day open rather than closing it before it starts.
+     *
+     * A window whose end is earlier than its start wraps around midnight:
+     * 20:00-02:00 means evening and the small hours, not "nothing".
+     *
+     * @since 1.12.0
+     * @param string $start_time   Proposed booking start, H:i or H:i:s
+     * @param string $window_start "Booking Start Time" setting
+     * @param string $window_end   "Booking End Time" setting
+     * @return bool
+     */
+    public static function is_start_within_booking_window($start_time, $window_start, $window_end) {
+        $start = self::minutes_of_day($start_time);
+        $from  = self::minutes_of_day($window_start);
+        $to    = self::minutes_of_day($window_end);
+
+        // 00:00 as an end means the end of the day.
+        if ($to === 0) {
+            $to = 1440;
+        }
+
+        if ($from <= $to) {
+            return $start >= $from && $start <= $to;
+        }
+
+        // Window wraps midnight.
+        return $start >= $from || $start <= $to;
+    }
+
+    /**
+     * Minutes since midnight for an H:i or H:i:s time
+     *
+     * @since 1.12.0
+     * @param string $time
+     * @return int
+     */
+    private static function minutes_of_day($time) {
+        $parts = explode(':', (string) $time);
+        $h = intval($parts[0]);
+        $m = isset($parts[1]) ? intval($parts[1]) : 0;
+        return ($h * 60) + $m;
+    }
+
+    /**
+     * When a booking ends, as a datetime a calendar can draw
+     *
+     * A booking that runs past midnight is one row on the day it starts, with
+     * an end time earlier than its start: 23:30 to 05:00. Pasted onto the
+     * booking's own date that reads as an event ending before it begins, and a
+     * calendar draws it as nothing at all, so the end rolls to the next day.
+     *
+     * @since 1.12.0
+     * @param string $booking_date Y-m-d
+     * @param string $start_time   H:i:s
+     * @param string $end_time     H:i:s
+     * @param string $separator    Between date and time; 'T' for FullCalendar
+     * @return string
+     */
+    public static function end_datetime($booking_date, $start_time, $end_time, $separator = 'T') {
+        $date = $booking_date;
+
+        if (self::minutes_of_day($end_time) <= self::minutes_of_day($start_time)) {
+            $date = date('Y-m-d', strtotime($booking_date . ' +1 day'));
+        }
+
+        return $date . $separator . $end_time;
     }
     
     /**

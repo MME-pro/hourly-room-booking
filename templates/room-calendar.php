@@ -268,8 +268,12 @@ jQuery(document).ready(function($) {
             endTime: '<?php echo get_option('hrb_booking_end_time', '20:00'); ?>',
             daysOfWeek: [1, 2, 3, 4, 5, 6] // Monday through Saturday
         },
-        slotMinTime: '<?php echo get_option('hrb_booking_start_time', '08:00'); ?>:00',
-        slotMaxTime: '<?php echo get_option('hrb_booking_end_time', '20:00'); ?>:00',
+        // The grid covers the whole day: a booking may start at the far end of
+        // the booking window and run on past it, and past midnight, so cutting
+        // the grid at the window would hide the hours it runs into. The window
+        // itself stays marked by businessHours above.
+        slotMinTime: '00:00:00',
+        slotMaxTime: '24:00:00',
         allDaySlot: false,
         slotDuration: '00:30:00',
         snapDuration: '00:30:00',
