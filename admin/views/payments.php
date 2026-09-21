@@ -284,15 +284,13 @@ $currency_symbol = hrb_get_currency_symbol();
                                         <span class="dashicons dashicons-visibility"></span>
                                     </button>
 
-                                    <?php // Refunding money is an Admin's call, not the desk's. ?>
-                                    <?php if (current_user_can('hrb_manage_payments') && $payment->status === 'completed' && $payment->refunded_amount < $payment->amount): ?>
+                                    <?php if ($payment->status === 'completed' && $payment->refunded_amount < $payment->amount): ?>
                                         <button type="button" class="button button-small hrb-refund-btn" onclick="processRefund(<?php echo $payment->id; ?>)" title="<?php _e('Process Refund', 'hourly-room-booking'); ?>">
                                             <span class="dashicons dashicons-undo"></span>
                                         </button>
                                     <?php endif; ?>
 
-                                    <?php // Nothing here that the viewer cannot actually carry out. ?>
-                                    <?php if (current_user_can('hrb_manage_payments') && $payment->status === 'pending'): ?>
+                                    <?php if ($payment->status === 'pending'): ?>
                                         <button type="button" class="button button-small hrb-complete-btn" onclick="markPaymentCompleted(<?php echo $payment->id; ?>)" title="<?php _e('Mark as Completed', 'hourly-room-booking'); ?>">
                                             <span class="dashicons dashicons-yes"></span>
                                         </button>
@@ -1097,7 +1095,15 @@ $currency_symbol = hrb_get_currency_symbol();
                 if (response.success) {
                     document.getElementById('payment-modal-body').innerHTML = response.data.html;
                     document.getElementById('payment-modal').style.display = 'flex';
+                } else {
+                    // Without this the button looked broken: the request came
+                    // back refused and nothing on screen changed, which is
+                    // indistinguishable from a dead button.
+                    alert('Error: ' + ((response.data && response.data.message) || <?php echo json_encode(__('Failed to load payment details', 'hourly-room-booking')); ?>));
                 }
+            },
+            error: function() {
+                alert(<?php echo json_encode(__('Failed to load payment details. Please try again.', 'hourly-room-booking')); ?>);
             }
         });
     }

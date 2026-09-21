@@ -5,6 +5,16 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-09-21
+
+### Fixed
+- **The View button on the Payments screen did nothing for an Employee.** The request came back refused — `hrb_get_payment_details` wanted `hrb_manage_payments`, which 1.15.0 had not given the role — and the handler had no `else` branch, so the refusal arrived and nothing on screen changed. That is indistinguishable from a dead button. An Employee now holds `hrb_manage_payments`, so the modal opens; and a refusal or a failed request says so instead of passing in silence.
+- **The Refund, Mark as Completed and Cancel buttons are back on the Payments screen.** 1.15.0 hid them from an Employee on the grounds that the server would refuse them anyway. Giving the role the capability was the right end to fix: the desk works the payment list, so the buttons belong there and now do what they say.
+
+### Note
+- An Employee can now also bulk-delete payment records, which the same capability governs. Say so if that should be an Admin's alone and it can be split out.
+- The books are unchanged: revenue cards, the four figures above the payment list, reports, price configuration and exports remain with an Admin.
+
 ## [1.16.0] - 2026-09-21
 
 ### Changed

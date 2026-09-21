@@ -71,12 +71,12 @@ check('handles customers', employee_has('hrb_manage_customers'), true);
 check('keeps the room diary', employee_has('hrb_manage_rooms'), true);
 check('keeps extras in stock', employee_has('hrb_manage_extras'), true);
 check('sees what a booking costs', employee_has(HRB_Capabilities::BOOKING_AMOUNTS), true);
-check('works the payments list', employee_has('hrb_view_payments'), true);
+check('sees the payments list', employee_has('hrb_view_payments'), true);
+check('and works it: view, complete, cancel, refund', employee_has('hrb_manage_payments'), true);
 
 echo "\n-- but never the money --\n";
 
 check('not the books', employee_has(HRB_Capabilities::FINANCIALS), false);
-check('no refunds, no deleting payment records', employee_has('hrb_manage_payments'), false);
 check('no reports', employee_has('hrb_view_reports'), false);
 check('no settings', employee_has('hrb_manage_settings'), false);
 check('no exports', employee_has('hrb_export_data'), false);
@@ -103,7 +103,6 @@ sort($denied);
 
 check('exactly the books are revoked, not the desk', $denied, [
     'hrb_export_data',
-    'hrb_manage_payments',
     'hrb_manage_settings',
     'hrb_view_financials',
     'hrb_view_reports',

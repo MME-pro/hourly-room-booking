@@ -70,7 +70,8 @@ class HRB_Capabilities {
             'hrb_view_bookings',
             'hrb_manage_bookings',   // includes marking a booking paid
             self::BOOKING_AMOUNTS,   // what this booking costs, not what the month took
-            'hrb_view_payments',     // the payment list; refunds stay with an Admin
+            'hrb_view_payments',     // the payment list
+            'hrb_manage_payments',   // and working it: view, complete, cancel, refund
             'hrb_view_calendar',
             'hrb_view_customers',
             'hrb_manage_customers',
@@ -89,7 +90,6 @@ class HRB_Capabilities {
     public static function admin_caps() {
         return array_merge(self::employee_caps(), [
             self::FINANCIALS,
-            'hrb_manage_payments',
             'hrb_view_reports',
             'hrb_manage_settings',
             'hrb_export_data',
