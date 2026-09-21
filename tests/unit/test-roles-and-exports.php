@@ -72,6 +72,7 @@ check('keeps the room diary', employee_has('hrb_manage_rooms'), true);
 check('keeps extras in stock', employee_has('hrb_manage_extras'), true);
 check('sees what a booking costs', employee_has(HRB_Capabilities::BOOKING_AMOUNTS), true);
 check('sees the payments list', employee_has('hrb_view_payments'), true);
+check('but not bookings whose time is over', employee_has(HRB_Capabilities::PAST_BOOKINGS), false);
 check('and works it: view, complete, cancel, refund', employee_has('hrb_manage_payments'), true);
 
 echo "\n-- but never the money --\n";
@@ -105,6 +106,7 @@ check('exactly the books are revoked, not the desk', $denied, [
     'hrb_export_data',
     'hrb_manage_settings',
     'hrb_view_financials',
+    'hrb_view_past_bookings',
     'hrb_view_reports',
 ]);
 
@@ -117,6 +119,33 @@ check('"read" is not treated as a plugin capability',
 // ---------------------------------------------------------------------------
 // Past or not: what the calendar shows an Employee
 // ---------------------------------------------------------------------------
+
+echo "
+-- when a booking is done with --
+";
+
+// 06:00-07:00 on the 21st: still the desk's business at 07:00, finished at
+// 07:01. The boundary is the end itself, and the end counts as live.
+function passed(string $date, string $start, string $end, string $now): bool {
+    return HRB_Capabilities::is_booking_passed($date, $start, $end, $now);
+}
+
+check('while it is still running', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 06:30:00'), false);
+check('at the very end it is not yet passed', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 07:00:00'), false);
+check('a minute later it is', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 07:01:00'), true);
+check('before it even starts', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 05:00:00'), false);
+check('a booking on a later day is not passed', passed('2026-09-22', '06:00:00', '07:00:00', '2026-09-21 23:59:00'), false);
+
+// The case a date comparison gets wrong: a booking that started last night
+// and is still running now.
+check('one running past midnight is live at 01:00',
+    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 01:00:00'), false);
+check('...and done at 02:31',
+    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 02:31:00'), true);
+check('its end rolls to the next day',
+    HRB_Capabilities::booking_ends_at('2026-09-21', '23:30:00', '02:30:00'), '2026-09-22 02:30:00');
+check('an ordinary booking ends on its own day',
+    HRB_Capabilities::booking_ends_at('2026-09-21', '06:00:00', '07:00:00'), '2026-09-21 07:00:00');
 
 echo "
 -- a booking's day, against today --

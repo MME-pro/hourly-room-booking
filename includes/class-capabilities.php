@@ -49,6 +49,21 @@ class HRB_Capabilities {
     const BOOKING_AMOUNTS = 'hrb_view_booking_amounts';
 
     /**
+     * Seeing bookings whose time is over.
+     *
+     * A booking from 06:00 to 07:00 is the desk's business until 07:00. At
+     * 07:01 it is done with, and it drops off the Employee's booking list
+     * and out of their payment list with it - what is left to do is the
+     * books. An Admin keeps the whole history.
+     *
+     * Measured from the booking's *end*, not its date: a booking running
+     * until 02:00 tomorrow is still live at 23:00 tonight.
+     *
+     * @since 1.17.0
+     */
+    const PAST_BOOKINGS = 'hrb_view_past_bookings';
+
+    /**
      * Role slug for full access.
      */
     const ROLE_ADMIN = 'hrb_admin';
@@ -90,6 +105,7 @@ class HRB_Capabilities {
     public static function admin_caps() {
         return array_merge(self::employee_caps(), [
             self::FINANCIALS,
+            self::PAST_BOOKINGS,
             'hrb_view_reports',
             'hrb_manage_settings',
             'hrb_export_data',
@@ -136,6 +152,90 @@ class HRB_Capabilities {
      * @since 1.15.0
      * @return bool
      */
+    /**
+     * May the current user be shown bookings whose time is over?
+     *
+     * @since 1.17.0
+     * @return bool
+     */
+    public static function can_view_past_bookings() {
+        return function_exists('current_user_can') && current_user_can(self::PAST_BOOKINGS);
+    }
+
+    /**
+     * A WHERE fragment that leaves finished bookings out, for whoever may
+     * not see them.
+     *
+     * The end is built in SQL the same way booking_ends_at() builds it in
+     * PHP: a row whose end does not follow its start ran past midnight, so
+     * its end belongs to the next day. "Now" is passed in from PHP rather
+     * than taken from NOW(), because the database server's clock and the
+     * plugin's timezone are not the same thing.
+     *
+     * @since 1.17.0
+     * @param string $alias Table alias the bookings table is under
+     * @param string $now   Y-m-d H:i:s to measure against
+     * @return string SQL beginning with AND, or '' when everything is allowed
+     */
+    public static function unfinished_only_sql($alias = 'b', $now = null) {
+        if (self::can_view_past_bookings()) {
+            return '';
+        }
+
+        $now = $now === null ? date('Y-m-d H:i:s') : $now;
+        $a   = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $alias);
+
+        return sprintf(
+            " AND (CASE WHEN {$a}.end_time <= {$a}.start_time"
+            . " THEN TIMESTAMP(DATE_ADD({$a}.booking_date, INTERVAL 1 DAY), {$a}.end_time)"
+            . " ELSE TIMESTAMP({$a}.booking_date, {$a}.end_time) END) >= '%s'",
+            esc_sql($now)
+        );
+    }
+
+    /**
+     * When does a booking finish?
+     *
+     * A booking that runs past midnight is stored on the day it starts with
+     * an end earlier than its start - 23:30 to 02:30 is one row on one date
+     * - so the end rolls to the next day when it does not follow the start.
+     *
+     * @since 1.17.0
+     * @param string $booking_date Y-m-d
+     * @param string $start_time   H:i:s
+     * @param string $end_time     H:i:s
+     * @return string Y-m-d H:i:s
+     */
+    public static function booking_ends_at($booking_date, $start_time, $end_time) {
+        $date = substr((string) $booking_date, 0, 10);
+        $end  = substr((string) $end_time, 0, 8);
+
+        if (strtotime($end) <= strtotime(substr((string) $start_time, 0, 8))) {
+            $date = date('Y-m-d', strtotime($date . ' +1 day'));
+        }
+
+        return $date . ' ' . $end;
+    }
+
+    /**
+     * Is this booking's time already over?
+     *
+     * 06:00-07:00 is passed at 07:01 and not at 07:00: the booking is done
+     * with once its end has gone by, not while it is still running.
+     *
+     * @since 1.17.0
+     * @param string      $booking_date Y-m-d
+     * @param string      $start_time   H:i:s
+     * @param string      $end_time     H:i:s
+     * @param string|null $now          Y-m-d H:i:s; defaults to now
+     * @return bool
+     */
+    public static function is_booking_passed($booking_date, $start_time, $end_time, $now = null) {
+        $now = $now === null ? date('Y-m-d H:i:s') : $now;
+
+        return self::booking_ends_at($booking_date, $start_time, $end_time) < $now;
+    }
+
     public static function can_view_booking_amounts() {
         return function_exists('current_user_can')
             && (current_user_can(self::BOOKING_AMOUNTS) || current_user_can(self::FINANCIALS));

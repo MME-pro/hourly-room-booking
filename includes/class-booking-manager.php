@@ -1880,7 +1880,10 @@ class HRB_Booking_Manager {
             $where_values[] = $search_term;
         }
 
-        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        // A booking whose time is over drops off the list for whoever may not
+        // see finished bookings; an Admin keeps the whole history.
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions)
+            . HRB_Capabilities::unfinished_only_sql('b');
 
         // Sorting
         $order_by = 'b.created_at DESC'; // Default sorting
@@ -2059,7 +2062,10 @@ class HRB_Booking_Manager {
             $where_values[] = $search_term;
         }
 
-        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions);
+        // A booking whose time is over drops off the list for whoever may not
+        // see finished bookings; an Admin keeps the whole history.
+        $where_clause = 'WHERE ' . implode(' AND ', $where_conditions)
+            . HRB_Capabilities::unfinished_only_sql('b');
 
         $query = "
             SELECT COUNT(*)

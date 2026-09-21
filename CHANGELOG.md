@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-09-21
+
+### Added
+- **A booking that is over drops off an Employee's screens.** A booking from 06:00 to 07:00 is the desk's business until 07:00; at 07:01 it is done with, and it leaves their Bookings list, their Payments list and the recent-bookings list on the dashboard. An Admin keeps the whole history. The new `hrb_view_past_bookings` capability draws the line, and the **Old Bookings** screen — which is nothing but finished bookings — now belongs to it as well.
+- The cut is measured from the booking's **end**, not its date, so a booking running until 02:30 is still live at 01:00 the next morning rather than having vanished at midnight. `HRB_Capabilities::booking_ends_at()` rolls the end onto the next day when it does not follow the start, the same way the calendar feed does.
+- The filtering happens in SQL, so a finished booking is not fetched and paged around before being hidden: the list count an Employee sees matches the rows they get. "Now" is handed to the query from PHP rather than taken from `NOW()`, because the database server's clock and the plugin's timezone are not the same thing.
+
+### Note
+- The boundary is inclusive at the end: a booking ending at 07:00 is still shown at 07:00 and gone at 07:00:01. The desk keeps a booking for exactly as long as it is running.
+- This hides finished bookings from the *lists*. The calendar still shows them — an Employee sees the booking, and since 1.15.0 not its price once the day has passed.
+
 ## [1.16.1] - 2026-09-21
 
 ### Fixed

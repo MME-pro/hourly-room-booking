@@ -253,7 +253,10 @@ class HRB_Payment_Manager {
             $where_values[] = $search_term;
         }
 
-        $where_clause = implode(' AND ', $where_conditions);
+        // A payment belongs to its booking: once that booking's time is over,
+        // it leaves the list for whoever may not see finished bookings.
+        $where_clause = implode(' AND ', $where_conditions)
+            . HRB_Capabilities::unfinished_only_sql('b');
 
         // Get total count
         $count_query = "

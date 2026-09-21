@@ -82,7 +82,9 @@ class HRB_Admin {
             'hrb-dashboard',
             __('Old Bookings', 'hourly-room-booking'),
             __('Old Bookings', 'hourly-room-booking'),
-            'hrb_view_bookings',
+            // Nothing but finished bookings live here, so the screen belongs
+            // to whoever may see them.
+            HRB_Capabilities::PAST_BOOKINGS,
             'hrb-old-bookings',
             array($this, 'old_bookings_page')
         );
@@ -446,7 +448,7 @@ class HRB_Admin {
      * Old Bookings Page
      */
     public function old_bookings_page() {
-        $this->check_permissions('hrb_view_bookings');
+        $this->check_permissions(HRB_Capabilities::PAST_BOOKINGS);
         include HRB_PLUGIN_DIR . 'admin/views/old-bookings.php';
     }
     
@@ -2095,6 +2097,7 @@ class HRB_Admin {
             FROM {$wpdb->prefix}hrb_bookings b
             LEFT JOIN {$wpdb->prefix}hrb_customers c ON b.customer_id = c.id
             LEFT JOIN {$wpdb->prefix}hrb_rooms r ON b.room_id = r.id
+            WHERE 1=1" . HRB_Capabilities::unfinished_only_sql('b') . "
             ORDER BY b.created_at DESC
             LIMIT %d
         ", $limit);
