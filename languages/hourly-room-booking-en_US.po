@@ -2163,3 +2163,15 @@ msgstr "Insufficient permissions"
 
 msgid "Every 5 minutes"
 msgstr "Every 5 minutes"
+
+msgid "Booking Opening Time"
+msgstr "Booking Opening Time"
+
+msgid "Booking Closing Time"
+msgstr "Booking Closing Time"
+
+msgid "When bookings open (24-hour format, e.g., 08:00). Nothing can be booked to start before this time."
+msgstr "When bookings open (24-hour format, e.g., 08:00). Nothing can be booked to start before this time."
+
+msgid "When bookings close (24-hour format, e.g., 23:30). These two times are the window a booking may be *started* in, not how long it may run: a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past this time and past midnight."
+msgstr "When bookings close (24-hour format, e.g., 23:30). These two times are the window a booking may be *started* in, not how long it may run: a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past this time and past midnight."

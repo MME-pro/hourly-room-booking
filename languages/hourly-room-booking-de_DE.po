@@ -4280,3 +4280,15 @@ msgstr "Pro Tag"
 
 msgid "Every 5 minutes"
 msgstr "Alle 5 Minuten"
+
+msgid "Booking Opening Time"
+msgstr "Buchungsbeginn (Öffnungszeit)"
+
+msgid "Booking Closing Time"
+msgstr "Buchungsende (Schließzeit)"
+
+msgid "When bookings open (24-hour format, e.g., 08:00). Nothing can be booked to start before this time."
+msgstr "Ab wann gebucht werden kann (24-Stunden-Format, z.B. 08:00). Vor dieser Zeit kann keine Buchung beginnen."
+
+msgid "When bookings close (24-hour format, e.g., 23:30). These two times are the window a booking may be *started* in, not how long it may run: a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past this time and past midnight."
+msgstr "Bis wann gebucht werden kann (24-Stunden-Format, z.B. 23:30). Diese beiden Zeiten legen fest, wann eine Buchung *beginnen* darf – nicht, wie lange sie dauert: eine Buchung kann bis zu 24 Stunden lang sein, und eine Buchung, die vor der Schließzeit beginnt, läuft in voller Länge weiter – über diese Zeit und über Mitternacht hinaus."

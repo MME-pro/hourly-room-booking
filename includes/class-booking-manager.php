@@ -352,7 +352,7 @@ class HRB_Booking_Manager {
             return new WP_Error('room_locked', __('The room is locked for maintenance at the selected time.', 'hourly-room-booking'));
         }
 
-        // Validate the booking window ("Booking Start Time" / "Booking End Time")
+        // Validate the booking window ("Booking Opening Time" / "Booking Closing Time")
         //
         // The window says when a booking may *begin*, not how long it may run.
         // It is there because a person has to be around to take the booking, so
@@ -392,7 +392,7 @@ class HRB_Booking_Manager {
     /**
      * May a booking start at this time?
      *
-     * The "Booking Start Time" / "Booking End Time" settings describe when a
+     * The "Booking Opening Time" / "Booking Closing Time" settings describe when a
      * booking may be *started*, not how long it may then run: someone has to be
      * around to take the booking, and that is the only thing the window is
      * about. A booking that starts inside it may run its full length, past the
@@ -410,8 +410,8 @@ class HRB_Booking_Manager {
      *
      * @since 1.12.0
      * @param string $start_time   Proposed booking start, H:i or H:i:s
-     * @param string $window_start "Booking Start Time" setting
-     * @param string $window_end   "Booking End Time" setting
+     * @param string $window_start "Booking Opening Time" setting
+     * @param string $window_end   "Booking Closing Time" setting
      * @return bool
      */
     public static function is_start_within_booking_window($start_time, $window_start, $window_end) {

@@ -654,7 +654,7 @@ class HRB_Room_Manager {
     /**
      * Whether a booking may *start* inside the room's bookable window.
      *
-     * The room's hours, like the global "Booking Start/End Time" settings, say
+     * The room's hours, like the global "Booking Opening/Closing Time" settings, say
      * when a booking may begin — not how long it may then run. A room open
      * 08:00-23:30 can hold a session that starts at 23:30 and ends at 05:00;
      * what the window refuses is a booking *starting* at 03:00. Both ends are

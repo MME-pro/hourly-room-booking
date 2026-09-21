@@ -2,7 +2,7 @@
 /**
  * Tests for the booking window: the hours in which a booking may be started.
  *
- * "Booking Start Time" and "Booking End Time" say when a booking may *begin* —
+ * "Booking Opening Time" and "Booking Closing Time" say when a booking may *begin* —
  * someone has to be there to take it — and nothing about how long it may then
  * run. A session starting at 23:30 and running six hours past midnight is a
  * perfectly good booking; what the window refuses is one *starting* at 03:00.

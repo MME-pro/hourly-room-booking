@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.1] - 2026-09-21
+
+### Changed
+- **The two booking-window settings are now called "Booking Opening Time" and "Booking Closing Time".** They were "Booking Start Time" and "Booking End Time", which read as though they bounded the booking itself — the very thing they stopped doing in 1.12.0. They bound the window in which a booking may be *taken*, so they are named after opening and closing hours instead.
+- **Their descriptions say what they actually do.** The closing time now reads: these two times are the window a booking may be started in, not how long it may run — a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past closing and past midnight. Translated for `de_DE`.
+- The docblocks and comments that name these settings follow the new wording, so the code and the screen agree.
+
+### Note
+- The option keys are unchanged (`hrb_booking_start_time`, `hrb_booking_end_time`). Renaming them would have discarded the times every site has already set; only what the screen calls them has moved.
+- Nothing about the rules changed in this release. A site still showing a restriction after upgrading is one whose closing time is set earlier than intended — the setting, not the code.
+
 ## [1.13.0] - 2026-09-21
 
 ### Added

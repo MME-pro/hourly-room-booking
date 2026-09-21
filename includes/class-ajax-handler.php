@@ -1345,7 +1345,7 @@ class HRB_Ajax_Handler {
 
 
         // When a booking may start here. Two windows have a say: the
-        // "Booking Start Time" / "Booking End Time" settings, and the room's
+        // "Booking Opening Time" / "Booking Closing Time" settings, and the room's
         // own bookable hours where it has them. Both have to allow the start,
         // because the save checks both — the picker must not offer a slot that
         // would then be refused. Neither window says anything about how long
