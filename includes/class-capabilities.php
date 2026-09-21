@@ -28,9 +28,25 @@ if (!defined('ABSPATH')) {
 class HRB_Capabilities {
 
     /**
-     * Seeing money: totals, prices, revenue, payments, reports, exports.
+     * Seeing the books: revenue cards, totals across bookings, the figures on
+     * the reports screen, price configuration, exports.
+     *
+     * This is the aggregate view - what the business took, not what a
+     * customer owes. Admin only.
      */
     const FINANCIALS = 'hrb_view_financials';
+
+    /**
+     * Seeing what one booking costs.
+     *
+     * Desk work: the Amount column in the booking list, a booking's own
+     * total and its payment records, the running total while taking a
+     * booking. Someone at the desk has to be able to tell a customer what
+     * they owe, and that is a different question from what the month took.
+     *
+     * @since 1.15.0
+     */
+    const BOOKING_AMOUNTS = 'hrb_view_booking_amounts';
 
     /**
      * Role slug for full access.
@@ -53,6 +69,8 @@ class HRB_Capabilities {
             'read',
             'hrb_view_bookings',
             'hrb_manage_bookings',   // includes marking a booking paid
+            self::BOOKING_AMOUNTS,   // what this booking costs, not what the month took
+            'hrb_view_payments',     // the payment list; refunds stay with an Admin
             'hrb_view_calendar',
             'hrb_view_customers',
             'hrb_manage_customers',
@@ -71,7 +89,6 @@ class HRB_Capabilities {
     public static function admin_caps() {
         return array_merge(self::employee_caps(), [
             self::FINANCIALS,
-            'hrb_view_payments',
             'hrb_manage_payments',
             'hrb_view_reports',
             'hrb_manage_settings',
@@ -111,5 +128,51 @@ class HRB_Capabilities {
      */
     public static function can_view_financials() {
         return function_exists('current_user_can') && current_user_can(self::FINANCIALS);
+    }
+
+    /**
+     * May the current user be shown what a booking costs?
+     *
+     * @since 1.15.0
+     * @return bool
+     */
+    public static function can_view_booking_amounts() {
+        return function_exists('current_user_can')
+            && (current_user_can(self::BOOKING_AMOUNTS) || current_user_can(self::FINANCIALS));
+    }
+
+    /**
+     * Is this booking date in the past?
+     *
+     * The calendar shows an Employee what a booking costs while it is still
+     * ahead of them - they may still have to take the money - and stops once
+     * the day has gone by, which is the takings rather than the desk's work.
+     * An Admin sees both.
+     *
+     * @since 1.15.0
+     * @param string $booking_date Y-m-d
+     * @param string $today        Y-m-d; defaults to today
+     * @return bool
+     */
+    public static function is_past_date($booking_date, $today = null) {
+        $today = $today === null ? date('Y-m-d') : $today;
+
+        return substr((string) $booking_date, 0, 10) < $today;
+    }
+
+    /**
+     * May this booking's price be shown on the calendar?
+     *
+     * @since 1.15.0
+     * @param string $booking_date Y-m-d
+     * @param string $today        Y-m-d; defaults to today
+     * @return bool
+     */
+    public static function can_view_calendar_amount($booking_date, $today = null) {
+        if (self::can_view_financials()) {
+            return true;
+        }
+
+        return self::can_view_booking_amounts() && !self::is_past_date($booking_date, $today);
     }
 }

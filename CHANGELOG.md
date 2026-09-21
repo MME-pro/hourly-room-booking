@@ -5,6 +5,21 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-09-21
+
+### Added
+- **An Employee sees what a booking costs, without seeing the books.** 1.13.0 drew one line through all money, which took the Amount column away from the desk along with the revenue cards. There are two lines now. `hrb_view_booking_amounts` is the desk's question — what does this customer owe — and an Employee has it: the Amount column in the booking list and on the dashboard, a booking's own total and pricing breakdown, its payment records, the running total while taking a booking, the Amount column in a customer's history. `hrb_view_financials` stays the books — revenue cards, totals across bookings, the reports screen, price configuration, exports — and stays with an Admin.
+- **The Payments screen is open to an Employee.** They work the payment list; the four figures above it (Total Revenue, This Month, Total Transactions, Pending) are the books and are not drawn for them. Refunding, cancelling and deleting payment records remain an Admin's, and those buttons are no longer rendered for someone who cannot use them.
+- **On the calendar, an Employee sees a booking's price while it is still ahead of them, and not once the day has gone by** — money still to be taken is desk work, a past day's takings are the books. An Admin sees both. The figure is left out of the calendar feed rather than hidden in the markup, so it is not readable off the network response either.
+
+### Fixed
+- **A site could never be told about an update, and never told why.** The release cache is filled by the five-minute cron event and by WordPress rebuilding its update list — and on a site whose WP-Cron does not fire, and whose core update check cannot reach api.wordpress.org, neither happens, so the cache stays empty and the read filter added in 1.13.0 had nothing to serve. It now fills the cache itself on an admin screen when it finds it empty. The front end never reaches this code, and the 60-second cache holds it to one lookup a minute.
+- **The plugins row says what the last update check actually found** — "Latest release: 1.15.0", or "Update check failed: …" with the reason GitHub gave, next to the "Check for updates" link. Silence was the hardest version of this bug to diagnose: clicking the link and seeing nothing change could mean anything from a blocked host to an exhausted API allowance, and told nobody which.
+
+### Note
+- Existing Employees gain `hrb_view_booking_amounts` and `hrb_view_payments` on upgrade; the role is rebuilt on every admin load, so nothing needs reinstalling.
+- The Old Bookings screen stays Admin-only for amounts, on the same reasoning as the calendar: a booking whose day has passed is a figure in the books rather than something the desk still has to collect.
+
 ## [1.14.0] - 2026-09-21
 
 ### Changed

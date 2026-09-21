@@ -127,7 +127,7 @@ $month_end = date('Y-m-t');
                                 <th><?php _e('Room', 'hourly-room-booking'); ?></th>
                                 <th><?php _e('Date & Time', 'hourly-room-booking'); ?></th>
                                 <th><?php _e('Status', 'hourly-room-booking'); ?></th>
-                                <?php if (hrb_can_view_financials()): ?>
+                                <?php if (hrb_can_view_booking_amounts()): ?>
                                 <th><?php _e('Amount', 'hourly-room-booking'); ?></th>
                                 <?php endif; ?>
                                 <th><?php _e('Actions', 'hourly-room-booking'); ?></th>
@@ -157,7 +157,7 @@ $month_end = date('Y-m-t');
                                         <td>
                                             <?php echo HRB_Admin::getInstance()->get_status_badge($booking['status']); ?>
                                         </td>
-                                        <?php if (hrb_can_view_financials()): ?>
+                                        <?php if (hrb_can_view_booking_amounts()): ?>
                                         <td>
                                             <strong><?php echo hrb_format_amount($booking['total_amount']); ?></strong>
                                         </td>
@@ -180,7 +180,7 @@ $month_end = date('Y-m-t');
                                 <?php endforeach; ?>
                             <?php else: ?>
                                 <tr>
-                                    <td colspan="<?php echo hrb_can_view_financials() ? 7 : 6; ?>" class="hrb-no-data">
+                                    <td colspan="<?php echo hrb_can_view_booking_amounts() ? 7 : 6; ?>" class="hrb-no-data">
                                         <?php _e('No recent bookings found.', 'hourly-room-booking'); ?>
                                     </td>
                                 </tr>

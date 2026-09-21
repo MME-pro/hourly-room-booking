@@ -70,12 +70,13 @@ check('sees the calendar', employee_has('hrb_view_calendar'), true);
 check('handles customers', employee_has('hrb_manage_customers'), true);
 check('keeps the room diary', employee_has('hrb_manage_rooms'), true);
 check('keeps extras in stock', employee_has('hrb_manage_extras'), true);
+check('sees what a booking costs', employee_has(HRB_Capabilities::BOOKING_AMOUNTS), true);
+check('works the payments list', employee_has('hrb_view_payments'), true);
 
 echo "\n-- but never the money --\n";
 
-check('no figures at all', employee_has(HRB_Capabilities::FINANCIALS), false);
-check('no payments screen', employee_has('hrb_view_payments'), false);
-check('no refunds or payment records', employee_has('hrb_manage_payments'), false);
+check('not the books', employee_has(HRB_Capabilities::FINANCIALS), false);
+check('no refunds, no deleting payment records', employee_has('hrb_manage_payments'), false);
 check('no reports', employee_has('hrb_view_reports'), false);
 check('no settings', employee_has('hrb_manage_settings'), false);
 check('no exports', employee_has('hrb_export_data'), false);
@@ -100,12 +101,11 @@ echo "\n-- revoking the old grants --\n";
 $denied = HRB_Capabilities::employee_denied_caps();
 sort($denied);
 
-check('exactly the money capabilities are revoked', $denied, [
+check('exactly the books are revoked, not the desk', $denied, [
     'hrb_export_data',
     'hrb_manage_payments',
     'hrb_manage_settings',
     'hrb_view_financials',
-    'hrb_view_payments',
     'hrb_view_reports',
 ]);
 
@@ -114,6 +114,31 @@ check('nothing the desk needs is revoked',
 
 check('"read" is not treated as a plugin capability',
     in_array('read', HRB_Capabilities::all_caps(), true), false);
+
+// ---------------------------------------------------------------------------
+// Past or not: what the calendar shows an Employee
+// ---------------------------------------------------------------------------
+
+echo "
+-- a booking's day, against today --
+";
+
+// The calendar shows an Employee what a booking costs while it is still
+// ahead of them, and stops once the day has gone by. Reckoned from
+// 2026-09-21 throughout.
+const TODAY = '2026-09-21';
+
+function past(string $date): bool {
+    return HRB_Capabilities::is_past_date($date, TODAY);
+}
+
+check('yesterday is past', past('2026-09-20'), true);
+check('today is not', past('2026-09-21'), false);
+check('tomorrow is not', past('2026-09-22'), false);
+check('last month is', past('2026-08-31'), true);
+check('next year is not', past('2027-01-01'), false);
+check('a datetime is read by its date', past('2026-09-20 23:59:59'), true);
+check("...and today's datetime still is not past", past('2026-09-21 00:00:00'), false);
 
 // ---------------------------------------------------------------------------
 // Report ranges: the screen and its export must agree

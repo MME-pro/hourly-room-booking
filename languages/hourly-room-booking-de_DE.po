@@ -4301,3 +4301,15 @@ msgstr "Die Uhrzeit, zu der Sie öffnen (24-Stunden-Format, z.B. 09:00). Davor n
 
 msgid "The time of day you close (24-hour format, e.g., 23:00). These two are your opening hours — the hours in which a booking can be placed on the site. They say nothing about which slot is booked: at 23:00, while you are still open, a customer can book a room for 05:00 tomorrow. After closing, no new bookings are taken until you open again. Admins are not restricted."
 msgstr "Die Uhrzeit, zu der Sie schließen (24-Stunden-Format, z.B. 23:00). Diese beiden sind Ihre Öffnungszeiten – die Zeiten, in denen auf der Website gebucht werden kann. Sie sagen nichts darüber aus, welcher Zeitraum gebucht wird: um 23:00 Uhr, solange Sie geöffnet haben, kann ein Kunde einen Raum für morgen 05:00 Uhr buchen. Nach Schließung werden keine neuen Buchungen angenommen, bis Sie wieder öffnen. Für Administratoren gilt diese Einschränkung nicht."
+
+msgid "Update check failed: %s"
+msgstr "Update-Prüfung fehlgeschlagen: %s"
+
+msgid "Latest release: %s"
+msgstr "Neueste Version: %s"
+
+msgid "GitHub answered %d"
+msgstr "GitHub antwortete %d"
+
+msgid "No published release found"
+msgstr "Keine veröffentlichte Version gefunden"

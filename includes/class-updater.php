@@ -200,7 +200,20 @@ class HRB_Updater {
             return $transient;
         }
 
-        return $this->apply_release($transient, $this->get_cached_release());
+        $release = $this->get_cached_release();
+
+        // Nothing cached yet. On an admin screen, go and find out rather
+        // than showing nothing: the cache is normally kept warm by the cron
+        // event, but on a site whose WP-Cron never fires, and whose core
+        // update check cannot reach api.wordpress.org either, nothing would
+        // ever fill it and the update would stay invisible forever. The TTL
+        // keeps this to one lookup a minute, and the front end never gets
+        // here because the hooks are not registered there at all.
+        if (empty($release['version']) && empty($release['checked_at']) && is_admin() && !wp_doing_ajax()) {
+            $release = $this->get_remote_release();
+        }
+
+        return $this->apply_release($transient, $release);
     }
 
     /**
@@ -524,6 +537,26 @@ class HRB_Updater {
             esc_html__('Check for updates', 'hourly-room-booking')
         );
 
+        // Say what the last lookup found. An admin who clicks the link and
+        // sees nothing change otherwise has no way to tell a reachable
+        // GitHub from a blocked one, which is exactly the case that is hard
+        // to diagnose from the outside.
+        $release = $this->get_cached_release();
+
+        if (!empty($release['error'])) {
+            $links[] = '<span style="color:#b32d2e;">' . sprintf(
+                /* translators: %s: reason the update lookup failed */
+                esc_html__('Update check failed: %s', 'hourly-room-booking'),
+                esc_html($release['error'])
+            ) . '</span>';
+        } elseif (!empty($release['version'])) {
+            $links[] = sprintf(
+                /* translators: %s: version number of the latest release */
+                esc_html__('Latest release: %s', 'hourly-room-booking'),
+                esc_html($release['version'])
+            );
+        }
+
         return $links;
     }
 
@@ -561,6 +594,12 @@ class HRB_Updater {
         }
 
         $empty = [
+            // Why the last lookup came back with nothing, so the plugins row
+            // can say so. Silence is the hardest version of this bug to
+            // diagnose: an admin clicking "Check for updates" and seeing no
+            // change cannot tell a reachable GitHub from a blocked one.
+            'error'        => '',
+            'checked_at'   => time(),
             'version'      => '',
             'package'      => '',
             'homepage'     => 'https://github.com/' . self::GITHUB_OWNER . '/' . self::GITHUB_REPO,
@@ -588,6 +627,14 @@ class HRB_Updater {
         );
 
         if (is_wp_error($response) || 200 !== wp_remote_retrieve_response_code($response)) {
+            $empty['error'] = is_wp_error($response)
+                ? $response->get_error_message()
+                : sprintf(
+                    /* translators: %d: HTTP status code returned by GitHub */
+                    __('GitHub answered %d', 'hourly-room-booking'),
+                    (int) wp_remote_retrieve_response_code($response)
+                );
+
             // Cache the miss briefly so a broken API does not slow every
             // admin page load down with a fresh 15 second timeout.
             set_transient(self::CACHE_KEY, $empty, 15 * MINUTE_IN_SECONDS);
@@ -597,6 +644,7 @@ class HRB_Updater {
         $release = json_decode(wp_remote_retrieve_body($response), true);
 
         if (!is_array($release) || empty($release['tag_name']) || !empty($release['draft'])) {
+            $empty['error'] = __('No published release found', 'hourly-room-booking');
             set_transient(self::CACHE_KEY, $empty, 15 * MINUTE_IN_SECONDS);
             return $empty;
         }
@@ -604,6 +652,8 @@ class HRB_Updater {
         $header_data = $this->get_header_data();
 
         $data = [
+            'error'        => '',
+            'checked_at'   => time(),
             'version'      => ltrim((string) $release['tag_name'], 'vV'),
             'package'      => $this->pick_package($release),
             'homepage'     => !empty($release['html_url']) ? $release['html_url'] : $empty['homepage'],

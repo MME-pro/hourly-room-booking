@@ -1981,7 +1981,7 @@ class HRB_Admin {
                 esc_html($booking->room_name),
                 $this->format_date($booking->booking_date),
                 $this->format_time($booking->start_time),
-                hrb_can_view_financials() ? ' | ' . $this->format_currency($booking->total_amount) : '',
+                hrb_can_view_booking_amounts() ? ' | ' . $this->format_currency($booking->total_amount) : '',
                 $this->get_status_badge($booking->status)
             );
         }
@@ -2372,10 +2372,13 @@ class HRB_Admin {
                         'room_color' => $room_color,
                         'status' => $event->status,
                         'payment_status' => $event->payment_status,
-                        // The card omits the price for an Employee; the figure
-                        // is left out of the feed so it cannot be read off the
-                        // network response either.
-                        'total_amount' => hrb_can_view_financials()
+                        // An Employee is shown what a booking costs while it is
+                        // still ahead of them - they may yet have to take the
+                        // money - and not once the day has gone by, which is
+                        // the takings rather than the desk's work. An Admin
+                        // sees both. The figure is left out of the feed, not
+                        // just hidden, so it cannot be read off the response.
+                        'total_amount' => hrb_can_view_calendar_amount($event->booking_date)
                             ? number_format($event->total_amount, 2)
                             : null,
                         'extras' => $extras_list
@@ -3024,7 +3027,7 @@ class HRB_Admin {
                     <span class="hrb-bd-label"><i class="bi bi-credit-card-fill"></i><?php _e('Payment Status', 'hourly-room-booking'); ?></span>
                     <span class="hrb-bd-value"><?php echo $this->get_payment_status_badge($booking->payment_status); ?></span>
                 </div>
-                <?php if (hrb_can_view_financials()): ?>
+                <?php if (hrb_can_view_booking_amounts()): ?>
                 <div class="hrb-bd-item hrb-bd-item-total">
                     <span class="hrb-bd-label"><i class="bi bi-currency-euro"></i><?php _e('Total Amount', 'hourly-room-booking'); ?></span>
                     <span class="hrb-bd-value hrb-bd-amount"><?php echo esc_html(number_format((float) $booking->total_amount, 2)); ?> €</span>
@@ -3221,7 +3224,7 @@ class HRB_Admin {
             $html .= '<th>' . __('Room', 'hourly-room-booking') . '</th>';
             $html .= '<th>' . __('Time', 'hourly-room-booking') . '</th>';
             $html .= '<th>' . __('Status', 'hourly-room-booking') . '</th>';
-            if (hrb_can_view_financials()) {
+            if (hrb_can_view_booking_amounts()) {
                 $html .= '<th>' . __('Amount', 'hourly-room-booking') . '</th>';
             }
             $html .= '</tr>';
@@ -3235,7 +3238,7 @@ class HRB_Admin {
                 $html .= '<td>' . esc_html($booking->room_name) . '</td>';
                 $html .= '<td>' . esc_html($booking->start_time . ' - ' . $booking->end_time) . '</td>';
                 $html .= '<td><span class="status-' . esc_attr($booking->status) . '">' . esc_html($booking->status_label) . '</span></td>';
-                if (hrb_can_view_financials()) {
+                if (hrb_can_view_booking_amounts()) {
                     $html .= '<td>€' . number_format($booking->total_amount, 2) . '</td>';
                 }
                 $html .= '</tr>';

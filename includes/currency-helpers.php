@@ -40,6 +40,31 @@ function hrb_can_view_financials(): bool {
 }
 
 /**
+ * May the current user be shown what a single booking costs?
+ *
+ * The desk's question - what does this customer owe - as opposed to the
+ * books, which is hrb_can_view_financials(). An Employee gets this one.
+ *
+ * @since 1.15.0
+ */
+function hrb_can_view_booking_amounts(): bool {
+    return HRB_Capabilities::can_view_booking_amounts();
+}
+
+/**
+ * May this booking's price be shown on the calendar?
+ *
+ * An Employee sees it while the booking is still ahead of them and not
+ * once the day has passed; an Admin sees both.
+ *
+ * @since 1.15.0
+ * @param string $booking_date Y-m-d
+ */
+function hrb_can_view_calendar_amount($booking_date): bool {
+    return HRB_Capabilities::can_view_calendar_amount($booking_date);
+}
+
+/**
  * Get currency code
  */
 function hrb_get_currency_code(): string {

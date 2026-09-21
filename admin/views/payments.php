@@ -101,7 +101,9 @@ $currency_symbol = hrb_get_currency_symbol();
         </div>
     </div>
 
-    <!-- Payment Statistics -->
+    <!-- Payment Statistics. The books, not the desk: an Employee works the
+         payment list below but is not shown what the month took. -->
+    <?php if (hrb_can_view_financials()): ?>
     <div class="hrb-stats-grid">
         <div class="hrb-stat-card">
             <div class="hrb-stat-content">
@@ -129,6 +131,7 @@ $currency_symbol = hrb_get_currency_symbol();
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <!-- Filters -->
     <div class="hrb-filters">
@@ -281,13 +284,15 @@ $currency_symbol = hrb_get_currency_symbol();
                                         <span class="dashicons dashicons-visibility"></span>
                                     </button>
 
-                                    <?php if ($payment->status === 'completed' && $payment->refunded_amount < $payment->amount): ?>
+                                    <?php // Refunding money is an Admin's call, not the desk's. ?>
+                                    <?php if (current_user_can('hrb_manage_payments') && $payment->status === 'completed' && $payment->refunded_amount < $payment->amount): ?>
                                         <button type="button" class="button button-small hrb-refund-btn" onclick="processRefund(<?php echo $payment->id; ?>)" title="<?php _e('Process Refund', 'hourly-room-booking'); ?>">
                                             <span class="dashicons dashicons-undo"></span>
                                         </button>
                                     <?php endif; ?>
 
-                                    <?php if ($payment->status === 'pending'): ?>
+                                    <?php // Nothing here that the viewer cannot actually carry out. ?>
+                                    <?php if (current_user_can('hrb_manage_payments') && $payment->status === 'pending'): ?>
                                         <button type="button" class="button button-small hrb-complete-btn" onclick="markPaymentCompleted(<?php echo $payment->id; ?>)" title="<?php _e('Mark as Completed', 'hourly-room-booking'); ?>">
                                             <span class="dashicons dashicons-yes"></span>
                                         </button>
