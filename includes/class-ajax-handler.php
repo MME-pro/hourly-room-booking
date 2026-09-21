@@ -1344,16 +1344,14 @@ class HRB_Ajax_Handler {
         ));
 
 
-        // When a booking may start here. Two windows have a say: the
-        // "Booking Opening Time" / "Booking Closing Time" settings, and the room's
-        // own bookable hours where it has them. Both have to allow the start,
-        // because the save checks both — the picker must not offer a slot that
-        // would then be refused. Neither window says anything about how long
-        // the booking runs: that is the duration rules' business, and a slot
-        // running past the window's end, or past midnight, is still offered.
-        $window_start = get_option('hrb_booking_start_time', '08:00');
-        $window_end   = get_option('hrb_booking_end_time', '20:00');
-
+        // Every hour of the day is bookable. The "Booking Opening Time" and
+        // "Booking Closing Time" settings do not belong here at all: they say
+        // when a booking may be *taken*, not which slot may be chosen, and are
+        // checked against the clock when the booking is saved.
+        //
+        // A room's own bookable hours are a different thing and do belong here
+        // - a room shut at 03:00 cannot host a booking starting then - so the
+        // picker still honours those where a room has them set.
         $room_window_start = null;
         $room_window_end   = null;
 
@@ -1388,12 +1386,9 @@ class HRB_Ajax_Handler {
                 $start_minutes = ($hour * 60) + intval($minute);
                 $slot_start = sprintf('%02d:%s', $hour, $minute);
 
-                // Is this an hour a booking may be started in?
-                if (!HRB_Booking_Manager::is_start_within_booking_window($slot_start, $window_start, $window_end)) {
-                    continue;
-                }
+                // Only the room's own hours can rule a slot out here.
                 if ($room_window_start !== null
-                    && !HRB_Booking_Manager::is_start_within_booking_window($slot_start, $room_window_start, $room_window_end)) {
+                    && !HRB_Booking_Manager::is_time_within_window($slot_start, $room_window_start, $room_window_end)) {
                     continue;
                 }
 

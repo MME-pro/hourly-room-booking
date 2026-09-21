@@ -2175,3 +2175,12 @@ msgstr "When bookings open (24-hour format, e.g., 08:00). Nothing can be booked 
 
 msgid "When bookings close (24-hour format, e.g., 23:30). These two times are the window a booking may be *started* in, not how long it may run: a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past this time and past midnight."
 msgstr "When bookings close (24-hour format, e.g., 23:30). These two times are the window a booking may be *started* in, not how long it may run: a booking can be any length up to 24 hours, and one that starts before closing runs its full length, past this time and past midnight."
+
+msgid "Bookings can only be made between %s and %s"
+msgstr "Bookings can only be made between %s and %s"
+
+msgid "The time of day you open for business (24-hour format, e.g., 09:00). Before this, the site will not take a booking."
+msgstr "The time of day you open for business (24-hour format, e.g., 09:00). Before this, the site will not take a booking."
+
+msgid "The time of day you close (24-hour format, e.g., 23:00). These two are your opening hours — the hours in which a booking can be placed on the site. They say nothing about which slot is booked: at 23:00, while you are still open, a customer can book a room for 05:00 tomorrow. After closing, no new bookings are taken until you open again. Admins are not restricted."
+msgstr "The time of day you close (24-hour format, e.g., 23:00). These two are your opening hours — the hours in which a booking can be placed on the site. They say nothing about which slot is booked: at 23:00, while you are still open, a customer can book a room for 05:00 tomorrow. After closing, no new bookings are taken until you open again. Admins are not restricted."

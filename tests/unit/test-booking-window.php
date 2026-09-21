@@ -1,12 +1,15 @@
 <?php
 /**
- * Tests for the booking window: the hours in which a booking may be started.
+ * Tests for the booking hours: when a booking may be taken.
  *
- * "Booking Opening Time" and "Booking Closing Time" say when a booking may *begin* —
- * someone has to be there to take it — and nothing about how long it may then
- * run. A session starting at 23:30 and running six hours past midnight is a
- * perfectly good booking; what the window refuses is one *starting* at 03:00.
- * A room's own bookable hours work the same way.
+ * "Booking Opening Time" and "Booking Closing Time" are an office's opening
+ * hours. They say when a booking may be *placed*, and nothing whatever about
+ * which slot is being booked. A customer who walks in at 23:00, while the desk
+ * is open, may book a room for 05:00 tomorrow; what is refused is taking a
+ * booking at 23:45, when the place is shut.
+ *
+ * The slot itself is bounded only by the duration rules and, where a room has
+ * them, that room's own bookable hours.
  *
  * Standalone, no PHPUnit:
  *
@@ -21,6 +24,17 @@ define('ABSPATH', __DIR__);
 function add_action() { return true; }
 function add_filter() { return true; }
 function __($text, $domain = null) { return $text; }
+
+// now_time() reads the plugin's timezone setting; the tests pin it so the
+// assertion is about the rule, not about where this machine happens to be.
+$GLOBALS['hrb_test_timezone'] = 'Europe/Berlin';
+function get_option($name, $default = false) {
+    return 'hrb_timezone' === $name ? $GLOBALS['hrb_test_timezone'] : $default;
+}
+
+function looks_like_a_time($value): bool {
+    return is_string($value) && 5 === strlen($value) && ':' === substr($value, 2, 1);
+}
 
 require_once dirname(__DIR__, 2) . '/includes/class-booking-manager.php';
 require_once dirname(__DIR__, 2) . '/includes/class-room-manager.php';
@@ -46,8 +60,9 @@ function check(string $label, $actual, $expected): void {
     }
 }
 
-function may_start(string $time, string $from = '08:00', string $to = '23:30'): bool {
-    return HRB_Booking_Manager::is_start_within_booking_window($time, $from, $to);
+/** Is the desk open at this time of day, for an office running 09:00-23:00? */
+function open_at(string $time, string $from = '09:00', string $to = '23:00'): bool {
+    return HRB_Booking_Manager::is_time_within_window($time, $from, $to);
 }
 
 function room(string $from, string $to): stdClass {
@@ -62,57 +77,65 @@ function room_may_start(string $time, string $from, string $to): bool {
 }
 
 // ---------------------------------------------------------------------------
-// The window the settings describe: 08:00 to 23:30
+// Opening hours: 09:00 to 23:00
 // ---------------------------------------------------------------------------
 
-echo "\n-- inside the window --\n";
+echo "\n-- while the desk is open --\n";
 
-check('the opening time itself is bookable', may_start('08:00'), true);
-check('the middle of the day', may_start('14:30'), true);
-check('the closing time itself is bookable', may_start('23:30'), true);
-check('seconds on the time do not matter', may_start('23:30:00'), true);
+check('the minute it opens', open_at('09:00'), true);
+check('the middle of the day', open_at('14:30'), true);
+check('the minute it closes still counts as open', open_at('23:00'), true);
+check('seconds on the time do not matter', open_at('23:00:00'), true);
 
-echo "\n-- outside the window --\n";
+echo "\n-- once it is shut --\n";
 
-check('a minute before opening', may_start('07:59'), false);
-check('the half hour before opening', may_start('07:30'), false);
-check('a minute after the last startable time', may_start('23:31'), false);
-check('the small hours', may_start('03:00'), false);
-check('midnight itself', may_start('00:00'), false);
+check('a minute before opening', open_at('08:59'), false);
+check('the small hours', open_at('03:00'), false);
+check('a minute after closing', open_at('23:01'), false);
+check('midnight', open_at('00:00'), false);
+
+echo "\n-- the point: the slot booked is none of its business --\n";
+
+// The window is asked about the clock, never about the booking. A customer at
+// the desk at 23:00 booking a room for 05:00 tomorrow is the case this exists
+// for, and the only question asked is "is it 23:00 or earlier".
+check('taking a booking at 23:00 is allowed', open_at('23:00'), true);
+check('...whatever slot that booking is for', open_at('23:00'), true);
+check('taking one at 23:45 is not', open_at('23:45'), false);
+check('nor at 05:00, even to book the 05:00 slot', open_at('05:00'), false);
+
+echo "\n-- midnight as a closing time --\n";
+
+check('closing at 00:00 keeps the desk open late', open_at('23:45', '09:00', '00:00'), true);
+check('...but not in the small hours', open_at('03:00', '09:00', '00:00'), false);
+check('24:00 reads the same way', open_at('23:45', '09:00', '24:00'), true);
+check('00:00 to 00:00 is open around the clock', open_at('03:00', '00:00', '00:00'), true);
+
+echo "\n-- a desk that is open past midnight --\n";
+
+check('the evening is inside 20:00-02:00', open_at('21:00', '20:00', '02:00'), true);
+check('so are the small hours', open_at('01:30', '20:00', '02:00'), true);
+check('its closing minute counts', open_at('02:00', '20:00', '02:00'), true);
+check('the afternoon does not', open_at('15:00', '20:00', '02:00'), false);
+
+echo "\n-- local time, not the server's --\n";
+
+// A server on UTC would otherwise close a Berlin desk an hour or two early.
+check(
+    'it is the plugin timezone that is read, not the server clock',
+    HRB_Booking_Manager::now_time(),
+    (new DateTime('now', new DateTimeZone('Europe/Berlin')))->format('H:i')
+);
+
+// A timezone nobody can resolve must not take bookings down with it.
+$GLOBALS['hrb_test_timezone'] = 'Not/AZone';
+check('an unusable timezone still yields a time', looks_like_a_time(HRB_Booking_Manager::now_time()), true);
+$GLOBALS['hrb_test_timezone'] = 'Europe/Berlin';
+
+check('now_time() gives H:i', looks_like_a_time(HRB_Booking_Manager::now_time()), true);
 
 // ---------------------------------------------------------------------------
-// The point of the change: length is not the window's business
-// ---------------------------------------------------------------------------
-
-echo "\n-- duration does not enter into it --\n";
-
-// The window is asked about the start and only the start, so these all agree:
-// a booking at 23:30 is allowed however long it runs.
-check('23:30 start, whatever follows it', may_start('23:30'), true);
-check('22:00 start, whatever follows it', may_start('22:00'), true);
-check('a window ending at 20:00 still allows a 20:00 start', may_start('20:00', '08:00', '20:00'), true);
-check('...but not 20:30', may_start('20:30', '08:00', '20:00'), false);
-
-// ---------------------------------------------------------------------------
-// How the ends of the day are read
-// ---------------------------------------------------------------------------
-
-echo "\n-- midnight as an end --\n";
-
-check('an end of 00:00 leaves the day open, not shut', may_start('23:30', '08:00', '00:00'), true);
-check('an end of 24:00 does the same', may_start('23:30', '08:00', '24:00'), true);
-check('an end of 00:00 still bars the small hours', may_start('03:00', '08:00', '00:00'), false);
-check('a window of 00:00 to 00:00 is the whole day', may_start('03:00', '00:00', '00:00'), true);
-
-echo "\n-- a window that wraps midnight --\n";
-
-check('the evening is in a 20:00-02:00 window', may_start('21:00', '20:00', '02:00'), true);
-check('so are the small hours', may_start('01:30', '20:00', '02:00'), true);
-check('its closing time is bookable', may_start('02:00', '20:00', '02:00'), true);
-check('the afternoon is not', may_start('15:00', '20:00', '02:00'), false);
-
-// ---------------------------------------------------------------------------
-// A room's own bookable hours follow the same rule
+// A room's own bookable hours do bound the slot
 // ---------------------------------------------------------------------------
 
 echo "\n-- per-room bookable hours --\n";

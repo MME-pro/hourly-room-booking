@@ -292,17 +292,12 @@ foreach ($rooms as $room) {
                     <select id="hrb-search-time" name="time">
                         <option value=""><?php _e('Any time', 'hourly-room-booking'); ?></option>
                         <?php
-                        // The times a booking may start at: every half hour the
-                        // booking window allows, its end included.
-                        $booking_start_time = get_option('hrb_booking_start_time', '08:00');
-                        $booking_end_time = get_option('hrb_booking_end_time', '20:00');
-
+                        // Every half hour of the day. The booking-hours settings
+                        // say when a booking may be taken, not which slot may be
+                        // asked for, so they do not narrow this list.
                         for ($hour = 0; $hour < 24; $hour++) {
                             foreach (['00', '30'] as $minute) {
                                 $time_value = sprintf('%02d:%s', $hour, $minute);
-                                if (!HRB_Booking_Manager::is_start_within_booking_window($time_value, $booking_start_time, $booking_end_time)) {
-                                    continue;
-                                }
                                 echo '<option value="' . esc_attr($time_value) . '" ' . selected($filter_time, $time_value, false) . '>' . esc_html($time_value) . '</option>';
                             }
                         }

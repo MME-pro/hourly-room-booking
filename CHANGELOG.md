@@ -5,6 +5,19 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-09-21
+
+### Changed
+- **The booking hours are opening hours, not a limit on the slot.** "Booking Opening Time" and "Booking Closing Time" now do what their names say: they are the hours in which a booking may be *placed on the site*, like an office's opening hours, and they have nothing to do with which slot is being booked. A customer at the desk at 23:00, while it is still open, can book a room for 05:00 the next morning — that is the case these settings exist for. What is refused is taking a booking at 23:45, when the place is shut. Since 1.12.0 they had instead bounded the *start time of the slot*, which is not what they were ever for.
+- **Every hour of the day is bookable again.** The time-slot picker, the calendar's slot list and both search filters offer all 24 hours. A room's own "Bookable hours" still bound the slot where an admin has set them, because a room that is shut at 03:00 genuinely cannot host a booking starting then — that is a different question from whether the desk is open.
+- **Admins are exempt**, as they already are from the past-date, advance-window and duration rules. They are the desk, and they occasionally have to put a booking right after hours.
+- The check reads the clock in the plugin's own timezone (`hrb_timezone`) rather than the server's, which on shared hosting is usually UTC and would close the desk an hour or two early. An unusable timezone setting falls back to WordPress's local time rather than refusing bookings.
+- `HRB_Booking_Manager::is_start_within_booking_window()` is now `is_time_within_window()`: the arithmetic is the same, but what is handed to it is the clock, not the slot, and the name should say so.
+
+### Note
+- **Check your closing time after upgrading.** Under 1.12.0–1.13.1 a site wanting bookings around the clock had to set the closing time to 23:30 or 24:00. That value now means "the desk is open until 23:30", which may be later than you actually take bookings. Set these two to your real opening hours.
+- Nothing here changes how long a booking may be. The duration rules are unchanged: minimum 2 hours, 12 for a public booking, 24 for one an admin enters.
+
 ## [1.13.1] - 2026-09-21
 
 ### Changed
