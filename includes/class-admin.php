@@ -4169,10 +4169,12 @@ class HRB_Admin {
             wp_send_json_error(__('Booking not found', 'hourly-room-booking'));
         }
         
-        // Verify payment method is onsite or cash
+        // Verify the payment is one that is settled by hand: cash at the desk,
+        // or a bank transfer the admin has matched against the statement.
+        // PayPal tells us itself and must not be markable from here.
         $payment_method_normalized = strtolower(trim($booking->payment_method ?? ''));
-        if (!in_array($payment_method_normalized, ['onsite', 'cash'])) {
-            wp_send_json_error(__('This action is only available for onsite/cash payment methods', 'hourly-room-booking'));
+        if (!in_array($payment_method_normalized, ['onsite', 'cash', 'bank_transfer'])) {
+            wp_send_json_error(__('This action is only available for onsite, cash or bank transfer payment methods', 'hourly-room-booking'));
         }
         
         // Get ALL pending payments for this booking (including original and additional service payments)

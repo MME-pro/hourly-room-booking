@@ -252,7 +252,9 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
             ];
             
             // Validate booking data using the same validator as frontend
-            $booking_data = $validator->validate_booking_data($validator_data);
+            // true: this form is the admin's, so the backend-only payment
+            // methods (bank transfer) are accepted here and nowhere else.
+            $booking_data = $validator->validate_booking_data($validator_data, true);
             if (is_wp_error($booking_data)) {
                 // Store all error messages in transient and set action to 'add'
                 $error_messages = $booking_data->get_error_messages();
@@ -1275,6 +1277,37 @@ function hrb_booking_has_completed_payment($booking_id) {
 }
 
 /**
+ * Render the payment-method <select> for the admin booking forms.
+ *
+ * The list comes from hrb_get_selectable_payment_methods(true), so the
+ * admin-only methods are here and only here. $current is merged back in when
+ * it is no longer on offer: a booking taken by bank transfer must not silently
+ * change method just because the option was switched off afterwards.
+ *
+ * @since 1.19.0
+ * @param string $current The booking's current payment method, if any.
+ */
+function hrb_render_payment_method_select($current = '') {
+    $current = strtolower(trim((string) $current));
+    $methods = hrb_get_selectable_payment_methods(true);
+
+    if ($current !== '' && !isset($methods[$current])) {
+        $methods[$current] = hrb_get_payment_method_label($current);
+    }
+
+    echo '<select name="payment_method" id="payment_method" class="regular-text">';
+    foreach ($methods as $method_key => $method_label) {
+        printf(
+            '<option value="%s"%s>%s</option>',
+            esc_attr($method_key),
+            selected($current, $method_key, false),
+            esc_html($method_label)
+        );
+    }
+    echo '</select>';
+}
+
+/**
  * The internal "paid by bank transfer" marker on the admin booking forms.
  *
  * Not a payment method: the booking still records how it was *meant* to be
@@ -1288,11 +1321,17 @@ function hrb_booking_has_completed_payment($booking_id) {
  *
  * @param bool   $checked           Whether the booking already carries the marker.
  * @param string $booking_reference Reference of the booking being edited, if any.
+ * @param string $payment_method    The booking's payment method, if any.
  */
-function hrb_render_bank_transfer_note($checked = false, $booking_reference = '') {
+function hrb_render_bank_transfer_note($checked = false, $booking_reference = '', $payment_method = '') {
     if (!hrb_bank_transfer_enabled()) {
         return;
     }
+
+    // The account is worth showing for either reason: the booking is *to be*
+    // paid by transfer, or the desk has noted that it was. The form's script
+    // keeps this in step as the select and the checkbox move.
+    $show_details = $checked || strtolower(trim((string) $payment_method)) === 'bank_transfer';
 
     $details = hrb_get_bank_transfer_details();
 
@@ -1317,7 +1356,7 @@ function hrb_render_bank_transfer_note($checked = false, $booking_reference = ''
             <p class="description"><?php _e('For your records only — never shown to the customer and it does not change the booking or payment status.', 'hourly-room-booking'); ?></p>
 
             <?php if (!empty($rows)): ?>
-                <div id="hrb-bank-transfer-details" style="display:<?php echo $checked ? 'block' : 'none'; ?>;max-width:520px;margin-top:10px;padding:12px 14px;background:#f6f7f7;border:1px solid #dcdcde;border-left:4px solid #2271b1;border-radius:4px;">
+                <div id="hrb-bank-transfer-details" style="display:<?php echo $show_details ? 'block' : 'none'; ?>;max-width:520px;margin-top:10px;padding:12px 14px;background:#f6f7f7;border:1px solid #dcdcde;border-left:4px solid #2271b1;border-radius:4px;">
                     <table style="margin:0;border-collapse:collapse;">
                         <?php foreach ($rows as $row_label => $row_value): ?>
                             <tr>
@@ -1337,7 +1376,7 @@ function hrb_render_bank_transfer_note($checked = false, $booking_reference = ''
 }
 
 /**
- * Reveal the bank details with the checkbox.
+ * Reveal the bank details, from either the select or the checkbox.
  *
  * Both admin booking forms use the same element ids, so one copy of the
  * script serves each of them.
@@ -1349,10 +1388,13 @@ function hrb_print_bank_transfer_toggle_script() {
     ?>
     <script>
     jQuery(document).ready(function($) {
-        var $box = $('#paid_by_bank_transfer');
-        $box.on('change', function() {
-            $('#hrb-bank-transfer-details').toggle($box.is(':checked'));
-        });
+        function hrbToggleBankTransferDetails() {
+            var byMethod = $('#payment_method').val() === 'bank_transfer';
+            var byNote   = $('#paid_by_bank_transfer').is(':checked');
+            $('#hrb-bank-transfer-details').toggle(byMethod || byNote);
+        }
+        $('#payment_method, #paid_by_bank_transfer').on('change', hrbToggleBankTransferDetails);
+        hrbToggleBankTransferDetails();
     });
     </script>
     <?php
@@ -2119,7 +2161,9 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                 <?php
                 // Show payment action buttons based on payment method
                 $payment_method_normalized = strtolower(trim($booking->payment_method ?? ''));
-                $is_onsite_payment = ($payment_method_normalized === 'onsite' || $payment_method_normalized === 'cash');
+                // Methods someone settles by hand, so the desk is the only
+                // thing that can tell us the money arrived.
+                $is_onsite_payment = in_array($payment_method_normalized, array('onsite', 'cash', 'bank_transfer'), true);
                 
                     global $wpdb;
                     $payment_handler = HRB_Payment_Handler::getInstance();
@@ -2278,13 +2322,10 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         <tr>
                             <th><label for="payment_method"><?php _e('Payment Method', 'hourly-room-booking'); ?></label></th>
                             <td>
-                                <select name="payment_method" id="payment_method" class="regular-text">
-                                    <option value="onsite" <?php selected($booking->payment_method, 'onsite'); ?>><?php _e('On-site Payment', 'hourly-room-booking'); ?></option>
-                                    <option value="paypal" <?php selected($booking->payment_method, 'paypal'); ?>><?php _e('PayPal', 'hourly-room-booking'); ?></option>
-                                </select>
+                                <?php hrb_render_payment_method_select($booking->payment_method); ?>
                             </td>
                         </tr>
-                        <?php hrb_render_bank_transfer_note(!empty($booking->paid_by_bank_transfer), $booking->booking_reference ?? ''); ?>
+                        <?php hrb_render_bank_transfer_note(!empty($booking->paid_by_bank_transfer), $booking->booking_reference ?? '', $booking->payment_method ?? ''); ?>
                         <?php if (hrb_booking_has_completed_payment($booking->id)): ?>
                         <tr id="hrb-difference-payment-row">
                             <th><label for="difference_payment_method"><?php _e('Pay difference via', 'hourly-room-booking'); ?></label></th>
@@ -2548,10 +2589,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         <tr>
                             <th><label for="payment_method"><?php _e('Payment Method', 'hourly-room-booking'); ?></label></th>
                             <td>
-                                <select name="payment_method" id="payment_method">
-                                    <option value="onsite"><?php _e('On-site Payment', 'hourly-room-booking'); ?></option>
-                                    <option value="paypal"><?php _e('PayPal', 'hourly-room-booking'); ?></option>
-                                </select>
+                                <?php hrb_render_payment_method_select(); ?>
                             </td>
                         </tr>
                         <?php hrb_render_bank_transfer_note(); ?>

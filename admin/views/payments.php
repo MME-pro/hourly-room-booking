@@ -159,6 +159,7 @@ $currency_symbol = hrb_get_currency_symbol();
                     <option value=""><?php _e('All Methods', 'hourly-room-booking'); ?></option>
                     <option value="paypal" <?php selected($filters['payment_method'], 'paypal'); ?>><?php _e('PayPal', 'hourly-room-booking'); ?></option>
                     <option value="onsite" <?php selected($filters['payment_method'], 'onsite'); ?>><?php _e('On-site Payment', 'hourly-room-booking'); ?></option>
+                    <option value="bank_transfer" <?php selected($filters['payment_method'], 'bank_transfer'); ?>><?php _e('Bank Transfer', 'hourly-room-booking'); ?></option>
                 </select>
             </div>
 

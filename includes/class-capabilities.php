@@ -250,11 +250,11 @@ class HRB_Capabilities {
      * A WHERE fragment that leaves finished bookings out, for whoever may
      * not see them.
      *
-     * The end is built in SQL the same way booking_ends_at() builds it in
-     * PHP: a row whose end does not follow its start ran past midnight, so
-     * its end belongs to the next day. "Now" is passed in from PHP rather
-     * than taken from NOW(), because the database server's clock and the
-     * plugin's timezone are not the same thing.
+     * The boundary is built in SQL the same way becomes_past_at() builds it
+     * in PHP: midnight after the day the booking finishes on, so a booking
+     * stays on the desk's screens for the whole of its own day. "Now" is
+     * passed in from PHP rather than taken from NOW(), because the database
+     * server's clock and the plugin's timezone are not the same thing.
      *
      * @since 1.17.0
      * @param string $alias Table alias the bookings table is under
@@ -269,7 +269,7 @@ class HRB_Capabilities {
         $now = $now === null ? date('Y-m-d H:i:s') : $now;
 
         return sprintf(
-            ' AND ' . self::ended_at_sql($alias) . " >= '%s'",
+            ' AND ' . self::becomes_past_at_sql($alias) . " > '%s'",
             esc_sql($now)
         );
     }
@@ -325,10 +325,60 @@ class HRB_Capabilities {
     }
 
     /**
-     * Is this booking's time already over?
+     * When does a booking become a *past* booking?
      *
-     * 06:00-07:00 is passed at 07:01 and not at 07:00: the booking is done
-     * with once its end has gone by, not while it is still running.
+     * Not when it ends - at midnight after the day it ends on. A booking from
+     * 06:00 to 07:00 is the desk's business for the whole of that day and
+     * becomes past at 00:00 the next morning, rather than dropping out of
+     * sight at 07:01 while the day it belongs to is still being worked.
+     *
+     * A booking that runs past midnight is measured from the day it actually
+     * finishes on, not the day it started: 23:30 to 02:30 finishes on the
+     * following day and becomes past at midnight after *that*. Keying it to
+     * the start date would make a booking past at 00:00 while it was still
+     * running.
+     *
+     * This is the single boundary everything downstream turns on - which
+     * bookings the desk is shown, when a booking completes, and when an
+     * unpaid one becomes a no-show - so those three can never disagree.
+     *
+     * @since 1.19.0
+     * @param string $booking_date Y-m-d
+     * @param string $start_time   H:i:s
+     * @param string $end_time     H:i:s
+     * @return string Y-m-d H:i:s at midnight
+     */
+    public static function becomes_past_at($booking_date, $start_time, $end_time) {
+        $ends_on = substr(self::booking_ends_at($booking_date, $start_time, $end_time), 0, 10);
+
+        return date('Y-m-d', strtotime($ends_on . ' +1 day')) . ' 00:00:00';
+    }
+
+    /**
+     * When a booking becomes past, as a SQL expression.
+     *
+     * The PHP twin of becomes_past_at(): midnight after the day ended_at_sql()
+     * lands on. Compare it against a time handed in from PHP rather than
+     * NOW(), because the database server's clock and the plugin's timezone are
+     * not the same thing.
+     *
+     * @since 1.19.0
+     * @param string $alias Table alias the bookings table is under
+     * @return string SQL expression yielding a DATETIME
+     */
+    public static function becomes_past_at_sql($alias = 'b') {
+        return 'TIMESTAMP(DATE_ADD(DATE(' . self::ended_at_sql($alias) . '), INTERVAL 1 DAY))';
+    }
+
+    /**
+     * Is this booking a past booking?
+     *
+     * The day it finishes on is its own: a 06:00-07:00 booking is still
+     * current at 23:59 that night and past at 00:00, not past at 07:01. See
+     * becomes_past_at() for where the boundary sits and why.
+     *
+     * Inclusive at midnight, because midnight is the first moment of the new
+     * day rather than the last of the old one.
      *
      * @since 1.17.0
      * @param string      $booking_date Y-m-d
@@ -340,7 +390,7 @@ class HRB_Capabilities {
     public static function is_booking_passed($booking_date, $start_time, $end_time, $now = null) {
         $now = $now === null ? date('Y-m-d H:i:s') : $now;
 
-        return self::booking_ends_at($booking_date, $start_time, $end_time) < $now;
+        return self::becomes_past_at($booking_date, $start_time, $end_time) <= $now;
     }
 
     public static function can_view_booking_amounts() {

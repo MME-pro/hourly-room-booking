@@ -109,16 +109,67 @@ function hrb_get_payment_method_label(string $payment_method): string {
 }
 
 /**
- * Is the internal "paid by bank transfer" marker switched on?
+ * Is bank transfer switched on at all?
  *
- * Bank transfer is not a payment method here. It is a note the desk makes on
- * a booking it has already settled by hand, so nothing about it is ever shown
- * to a customer or offered in the public booking flow.
+ * The one setting behind both halves of it: the payment method an admin may
+ * pick, and the "Paid by bank transfer" note on the booking forms.
  *
  * @since 1.18.0
  */
 function hrb_bank_transfer_enabled(): bool {
     return (bool) HRB_Settings::getInstance()->get('hrb_bank_transfer_enabled');
+}
+
+/**
+ * Payment methods that exist only behind the admin screens.
+ *
+ * Bank transfer is settled by hand — someone reads the account statement and
+ * marks the booking paid — so it is desk work, and the public booking flow is
+ * never offered it.
+ *
+ * This list is fixed: it says what a method *is*, not whether it is currently
+ * on offer. A booking taken by transfer keeps its method even after the option
+ * is switched off in the settings.
+ *
+ * @since 1.19.0
+ * @return string[]
+ */
+function hrb_get_backend_only_payment_methods(): array {
+    return array('bank_transfer');
+}
+
+/**
+ * Is this method one an admin may pick but a customer may not?
+ *
+ * @since 1.19.0
+ */
+function hrb_is_backend_only_payment_method(string $payment_method): bool {
+    return in_array(strtolower(trim($payment_method)), hrb_get_backend_only_payment_methods(), true);
+}
+
+/**
+ * The payment methods a booking form may offer, as key => translated label.
+ *
+ * Callers that render or accept a *customer's* choice ask for the public list,
+ * which is the default. The admin booking forms — and the validation behind
+ * them — pass true. That single flag is what keeps bank transfer off the front
+ * end; nothing in the public templates or the public AJAX path ever sets it.
+ *
+ * @since 1.19.0
+ * @param bool $include_backend_only Also return the admin-only methods.
+ * @return array<string,string>
+ */
+function hrb_get_selectable_payment_methods(bool $include_backend_only = false): array {
+    $methods = array(
+        'onsite' => hrb_get_payment_method_label('onsite'),
+        'paypal' => hrb_get_payment_method_label('paypal'),
+    );
+
+    if ($include_backend_only && hrb_bank_transfer_enabled()) {
+        $methods['bank_transfer'] = hrb_get_payment_method_label('bank_transfer');
+    }
+
+    return $methods;
 }
 
 /**

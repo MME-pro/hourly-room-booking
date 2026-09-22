@@ -1,14 +1,17 @@
 <?php
 /**
- * Tests for the internal "paid by bank transfer" marker.
+ * Tests for bank transfer: the admin-only payment method and the internal
+ * "paid by bank transfer" marker that sits beside it.
  *
- * Bank transfer is deliberately not a payment method here. It is a note the
- * desk makes on a booking it has already settled by hand, so the things worth
- * pinning are the ones that would quietly break that promise:
+ * Both halves are desk work — an admin picks the method, and the desk notes
+ * when the money actually landed — so the things worth pinning are the ones
+ * that would quietly let either reach a customer:
  *
- *  - It stays out of the public payment methods. The validator must still
- *    refuse 'bank_transfer' from the booking flow, which is what stops a
- *    half-finished version of this feature leaking onto the front end.
+ *  - The method is offered to an admin and to nobody else. The public form
+ *    never renders it, but the form is not the only way in: the AJAX endpoint
+ *    hands raw $_POST to HRB_Input_Validator, so the validator is the boundary
+ *    that actually has to refuse it. It is unlocked by an explicit argument,
+ *    never by anything carried in the submitted data.
  *
  *  - Ticking it sends no email. The marker is kept out of the edit form's
  *    change comparison on purpose, so an edit that touches only the marker
@@ -110,9 +113,9 @@ function seed_settings(array $cache): void {
 // It is a note, not a payment method
 // ---------------------------------------------------------------------------
 
-echo "\n-- the booking flow still refuses it as a method --\n";
+echo "\n-- the public booking flow still refuses it as a method --\n";
 
-function submitted_method(string $payment_method): bool {
+function rejects(string $payment_method, bool $allow_backend_methods = false): bool {
     $result = HRB_Input_Validator::getInstance()->validate_booking_data([
         'room_id'        => 3,
         'booking_date'   => '2026-10-01',
@@ -120,15 +123,66 @@ function submitted_method(string $payment_method): bool {
         'end_time'       => '12:00',
         'extra_people'   => 0,
         'payment_method' => $payment_method,
-    ]);
+    ], $allow_backend_methods);
 
     return $result instanceof WP_Error;
 }
 
-check('bank_transfer is not an accepted payment method', submitted_method('bank_transfer'), true);
-check('on-site still is', submitted_method('onsite'), false);
-check('PayPal still is', submitted_method('paypal'), false);
-check('nonsense is still refused', submitted_method('bitcoin'), true);
+check('a customer cannot submit bank transfer', rejects('bank_transfer'), true);
+check('an admin can', rejects('bank_transfer', true), false);
+check('on-site is open to both', rejects('onsite'), false);
+check('PayPal is open to both', rejects('paypal'), false);
+check('nonsense is refused from the public flow', rejects('bitcoin'), true);
+check('nonsense is refused from the admin too', rejects('bitcoin', true), true);
+
+// The gate is an argument, not data: nothing a customer can put in the POST
+// body may unlock the method.
+$smuggled = [
+    'room_id'               => 3,
+    'booking_date'          => '2026-10-01',
+    'start_time'            => '10:00',
+    'end_time'              => '12:00',
+    'extra_people'          => 0,
+    'payment_method'        => 'bank_transfer',
+    'allow_backend_methods' => true,
+    'is_admin'              => 1,
+    'created_by_admin'      => 1,
+];
+check(
+    'a forged admin flag in the submitted data changes nothing',
+    HRB_Input_Validator::getInstance()->validate_booking_data($smuggled) instanceof WP_Error,
+    true
+);
+
+echo "\n-- which methods each form may offer --\n";
+
+seed_settings(['hrb_bank_transfer_enabled' => 1]);
+
+check(
+    'the public list is on-site and PayPal, nothing else',
+    array_keys(hrb_get_selectable_payment_methods()),
+    ['onsite', 'paypal']
+);
+check(
+    'the admin list adds bank transfer',
+    array_keys(hrb_get_selectable_payment_methods(true)),
+    ['onsite', 'paypal', 'bank_transfer']
+);
+
+seed_settings(['hrb_bank_transfer_enabled' => 0]);
+check(
+    'switching it off removes it from the admin list too',
+    array_keys(hrb_get_selectable_payment_methods(true)),
+    ['onsite', 'paypal']
+);
+check(
+    'but it is still classed as admin-only, so an existing booking keeps it',
+    hrb_is_backend_only_payment_method('bank_transfer'),
+    true
+);
+check('case and padding do not matter', hrb_is_backend_only_payment_method(' BANK_TRANSFER '), true);
+check('on-site is not admin-only', hrb_is_backend_only_payment_method('onsite'), false);
+check('paypal is not admin-only', hrb_is_backend_only_payment_method('paypal'), false);
 
 echo "\n-- hrb_bank_transfer_enabled --\n";
 

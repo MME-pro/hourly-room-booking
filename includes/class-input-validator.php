@@ -23,8 +23,13 @@ class HRB_Input_Validator {
     
     /**
      * Validate and sanitize booking data
+     *
+     * $allow_backend_methods is the gate on the admin-only payment methods
+     * (bank transfer). It is a separate argument rather than a flag read out
+     * of $data on purpose: the public AJAX path hands this method raw $_POST,
+     * so anything carried in the data itself would be settable by the customer.
      */
-    public function validate_booking_data(array $data): array|WP_Error {
+    public function validate_booking_data(array $data, bool $allow_backend_methods = false): array|WP_Error {
         $errors = new WP_Error();
         $sanitized = [];
         
@@ -99,6 +104,9 @@ class HRB_Input_Validator {
         } else {
             $sanitized['payment_method'] = sanitize_text_field($data['payment_method']);
             $allowed_methods = ['paypal', 'onsite', 'cash', 'card'];
+            if ($allow_backend_methods) {
+                $allowed_methods = array_merge($allowed_methods, hrb_get_backend_only_payment_methods());
+            }
             if (!in_array($sanitized['payment_method'], $allowed_methods)) {
                 $errors->add('payment_method_invalid', __('Invalid payment method', 'hourly-room-booking'));
             }

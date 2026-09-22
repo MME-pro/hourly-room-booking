@@ -4387,14 +4387,6 @@ msgstr "Entfällt"
 msgid "Nil (no-show)"
 msgstr "Entfällt (nicht erschienen)"
 
-msgid "Enable Bank Transfer Note"
-msgstr "Hinweis Banküberweisung aktivieren"
-
-msgid "Show a \"Paid by bank transfer\" checkbox when creating or editing a booking in the admin. It is an internal note and is never shown to customers or offered in the public booking form."
-msgstr "Beim Anlegen oder Bearbeiten einer Buchung im Adminbereich ein Kontrollkästchen \"Per Banküberweisung bezahlt\" anzeigen. Es ist eine interne Notiz und wird Kunden nie angezeigt oder im öffentlichen Buchungsformular angeboten."
-
-msgid "Name of the bank holding the account. Shown with the checkbox so whoever reconciles the booking can see which account to look at."
-msgstr "Name der kontoführenden Bank. Wird beim Kontrollkästchen angezeigt, damit beim Abgleich der Buchung erkennbar ist, welches Konto gemeint ist."
 
 msgid "The reference to look for on the statement. {booking_reference} is replaced with the booking reference."
 msgstr "Der Verwendungszweck, nach dem auf dem Kontoauszug gesucht wird. {booking_reference} wird durch die Buchungsnummer ersetzt."
@@ -4410,3 +4402,15 @@ msgstr "Per Banküberweisung bezahlt"
 
 msgid "For your records only — never shown to the customer and it does not change the booking or payment status."
 msgstr "Nur für Ihre Unterlagen — wird dem Kunden nie angezeigt und ändert weder den Buchungs- noch den Zahlungsstatus."
+
+msgid "Enable Bank Transfer"
+msgstr "Banküberweisung aktivieren"
+
+msgid "Offer Bank Transfer as a payment method when creating or editing a booking in the admin, and show a \"Paid by bank transfer\" note there. Both are admin-only: neither is ever shown to customers or offered in the public booking form."
+msgstr "Banküberweisung beim Anlegen oder Bearbeiten einer Buchung im Adminbereich als Zahlungsart anbieten und dort den Hinweis \"Per Banküberweisung bezahlt\" anzeigen. Beides gilt nur im Adminbereich: Kunden wird nichts davon angezeigt und im öffentlichen Buchungsformular nichts angeboten."
+
+msgid "Name of the bank holding the account. Shown on the booking form so whoever reconciles the booking can see which account to look at."
+msgstr "Name der kontoführenden Bank. Wird im Buchungsformular angezeigt, damit beim Abgleich der Buchung erkennbar ist, welches Konto gemeint ist."
+
+msgid "This action is only available for onsite, cash or bank transfer payment methods"
+msgstr "Diese Aktion ist nur für Zahlung vor Ort, Barzahlung oder Banküberweisung verfügbar"

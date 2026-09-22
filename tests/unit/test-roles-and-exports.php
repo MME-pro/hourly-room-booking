@@ -174,28 +174,49 @@ echo "
 -- when a booking is done with --
 ";
 
-// 06:00-07:00 on the 21st: still the desk's business at 07:00, finished at
-// 07:01. The boundary is the end itself, and the end counts as live.
+// A booking's day belongs to it. 06:00-07:00 on the 21st is still the desk's
+// business at 23:59 that night and becomes past at 00:00 on the 22nd - not at
+// 07:01, which would have dropped it out of sight while the day it belongs to
+// was still being worked.
 function passed(string $date, string $start, string $end, string $now): bool {
     return HRB_Capabilities::is_booking_passed($date, $start, $end, $now);
 }
 
 check('while it is still running', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 06:30:00'), false);
 check('at the very end it is not yet passed', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 07:00:00'), false);
-check('a minute later it is', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 07:01:00'), true);
+check('an hour after it ends it is still today\'s', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 08:00:00'), false);
+check('at 23:59 that night it is still today\'s', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 23:59:59'), false);
+check('at midnight it becomes past', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-22 00:00:00'), true);
+check('and stays past the next morning', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-22 09:00:00'), true);
 check('before it even starts', passed('2026-09-21', '06:00:00', '07:00:00', '2026-09-21 05:00:00'), false);
 check('a booking on a later day is not passed', passed('2026-09-22', '06:00:00', '07:00:00', '2026-09-21 23:59:00'), false);
 
-// The case a date comparison gets wrong: a booking that started last night
-// and is still running now.
+// A booking running past midnight is measured from the day it *finishes* on.
+// Keying it to the day it started would make it past at 00:00 on the 22nd,
+// while it was still running.
 check('one running past midnight is live at 01:00',
     passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 01:00:00'), false);
-check('...and done at 02:31',
-    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 02:31:00'), true);
-check('its end rolls to the next day',
+check('...still live at 02:31, its day is not over',
+    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 02:31:00'), false);
+check('...still live at 23:59 on the 22nd',
+    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-22 23:59:59'), false);
+check('...past at midnight on the 23rd',
+    passed('2026-09-21', '23:30:00', '02:30:00', '2026-09-23 00:00:00'), true);
+
+check('its end still rolls to the next day',
     HRB_Capabilities::booking_ends_at('2026-09-21', '23:30:00', '02:30:00'), '2026-09-22 02:30:00');
 check('an ordinary booking ends on its own day',
     HRB_Capabilities::booking_ends_at('2026-09-21', '06:00:00', '07:00:00'), '2026-09-21 07:00:00');
+
+// The boundary itself: midnight after the day the booking finishes on.
+check('an ordinary booking turns over the following midnight',
+    HRB_Capabilities::becomes_past_at('2026-09-21', '06:00:00', '07:00:00'), '2026-09-22 00:00:00');
+check('a booking ending just before midnight turns over an hour later',
+    HRB_Capabilities::becomes_past_at('2026-09-21', '21:00:00', '23:00:00'), '2026-09-22 00:00:00');
+check('one finishing after midnight turns over a day later still',
+    HRB_Capabilities::becomes_past_at('2026-09-21', '23:30:00', '02:30:00'), '2026-09-23 00:00:00');
+check('a month boundary rolls properly',
+    HRB_Capabilities::becomes_past_at('2026-09-30', '10:00:00', '12:00:00'), '2026-10-01 00:00:00');
 
 echo "
 -- a booking's day, against today --

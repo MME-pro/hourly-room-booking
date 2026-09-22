@@ -5,6 +5,19 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-09-22
+
+### Changed
+- **A booking now belongs to its day, not to its end time.** A booking from 06:00 to 07:00 used to become a *past* booking at 07:01 — it dropped off the desk's screens while the day it belonged to was still being worked. It now stays until 23:59 that night and turns over at midnight. Everything keyed to "past" moves with it, so the three can never disagree: which bookings an Employee is shown, when a booking becomes **completed**, and when an unpaid one becomes a **no-show**.
+- The practical effect on no-shows is the point of the change: a customer who has not arrived by 10:00 now has the rest of the day to walk in and pay, instead of being written off as a no-show at 10:01.
+- A booking that runs past midnight is measured from the day it *finishes* on, not the day it started. 23:30–02:30 started on the 24th finishes on the 25th and turns over at midnight on the 26th. Keying it to the start date would have made it past at midnight on the 25th, while it was still running. The new boundary is `HRB_Capabilities::becomes_past_at()` with a SQL twin, `becomes_past_at_sql()`, verified to return the same two answers against MySQL 8.4.
+
+### Added
+- **Bank Transfer is a payment method again, for the admin only.** It is offered when creating or editing a booking in the admin and nowhere else — the public booking form does not render it, and the AJAX endpoint that backs that form refuses it. The refusal is what matters: that endpoint is handed raw `$_POST`, so the method is unlocked by an explicit argument in the validator rather than by any flag carried in the submitted data, which a customer could otherwise set themselves.
+- A booking taken by bank transfer is confirmed straight away with its payment left pending, and its invoice is raised immediately — that invoice is what the customer pays against. When the money lands, **Mark Payment as Complete** settles it, the same button cash bookings use. The Payments screen has a Bank Transfer filter to find them.
+- The account from **Settings → Bank Transfer** — bank name, account holder, IBAN, BIC and the reference to look for on the statement — appears on the booking form as soon as Bank Transfer is selected, so whoever reconciles the booking can see which account the money should be on without leaving the page. It also appears for the "Paid by bank transfer" note added in 1.18.0, which remains: the method says how a booking is *to be* settled, the note records that it *was*.
+- A booking whose method is bank transfer keeps it even if the setting is later switched off, so turning the option off can never silently rewrite an existing booking's payment method.
+
 ## [1.18.1] - 2026-09-22
 
 ### Fixed

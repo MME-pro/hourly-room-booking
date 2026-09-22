@@ -134,7 +134,11 @@ class HRB_Booking_Manager {
             'tax_amount' => $pricing['tax_amount'],
             'paypal_fee' => $pricing['paypal_fee'],
             'total_amount' => $pricing['total_amount'],
-            'status' => isset($data['status']) ? sanitize_text_field($data['status']) : (isset($data['payment_method']) && in_array($data['payment_method'], ['onsite', 'cash']) ? 'confirmed' : 'pending'),
+            // Methods settled by hand — cash at the desk, a bank transfer the
+            // admin will match against the statement — confirm the booking
+            // straight away and leave the payment pending. PayPal is the other
+            // way round: nothing is confirmed until the gateway says so.
+            'status' => isset($data['status']) ? sanitize_text_field($data['status']) : (isset($data['payment_method']) && in_array($data['payment_method'], ['onsite', 'cash', 'bank_transfer']) ? 'confirmed' : 'pending'),
             'payment_status' => isset($data['payment_status']) ? $data['payment_status'] : 'pending',
             'payment_method' => isset($data['payment_method']) ? sanitize_text_field($data['payment_method']) : null,
             'special_requests' => isset($data['special_requests']) ? sanitize_textarea_field($data['special_requests']) : null,
@@ -233,6 +237,12 @@ class HRB_Booking_Manager {
                 }
                 // For cash/onsite payments, only create invoice when status is 'paid'
                 elseif (in_array($payment_method, ['onsite', 'cash']) && $booking_data['payment_status'] === 'paid') {
+                    $should_create_invoice = true;
+                }
+                // Bank transfer is the opposite case: the invoice is what the
+                // customer pays against, so it has to exist before the money
+                // arrives, not after.
+                elseif ($payment_method === 'bank_transfer') {
                     $should_create_invoice = true;
                 }
                 // For other payment methods, create invoice immediately
@@ -1660,18 +1670,21 @@ class HRB_Booking_Manager {
         // Whatever is still confirmed at this point was paid for - the unpaid
         // ones were taken by the no-show pass above.
         //
-        // The end is built the same way the no-show pass builds it, against
-        // the same "now". CONCAT(booking_date, end_time) read a booking
-        // running 23:30 to 02:30 as having ended at 02:30 that *morning*, so
-        // it was completed before it had begun; and NOW() is the database
-        // server's clock rather than the plugin's timezone.
-        $ends = HRB_Capabilities::ended_at_sql('b');
+        // The boundary is built the same way the no-show pass builds it,
+        // against the same "now": midnight after the booking's own day, not
+        // the moment it ends. A booking stays confirmed for the rest of the
+        // day it was worked on and completes overnight with the rest of them.
+        // CONCAT(booking_date, end_time) read a booking running 23:30 to 02:30
+        // as having ended at 02:30 that *morning*, so it was completed before
+        // it had begun; and NOW() is the database server's clock rather than
+        // the plugin's timezone.
+        $past_at = HRB_Capabilities::becomes_past_at_sql('b');
 
         $wpdb->query($wpdb->prepare(
             "UPDATE {$wpdb->prefix}hrb_bookings b
-             SET b.status = 'completed' 
-             WHERE b.status = 'confirmed' 
-             AND {$ends} < %s",
+             SET b.status = 'completed'
+             WHERE b.status = 'confirmed'
+             AND {$past_at} <= %s",
             $now
         ));
     }
@@ -2337,7 +2350,7 @@ class HRB_Booking_Manager {
     /**
      * Turn past unpaid bookings into no-shows.
      *
-     * A booking whose end has gone by with the money never collected is not a
+     * A booking whose day has gone by with the money never collected is not a
      * payment anyone is still waiting for - the room stood empty and nobody
      * came. Left alone it sat in the pending figures for ever, quietly
      * inflating what the business believed it was owed. This closes it:
@@ -2353,9 +2366,13 @@ class HRB_Booking_Manager {
      * alone, and the cancellation-fee charge is left alone too: that is a real
      * debt, and failing to turn up does not erase it.
      *
-     * "Now" comes from WordPress rather than NOW(), and the end is built with
-     * HRB_Capabilities::ended_at_sql() so a booking running 23:30 to 02:30 is
-     * only over once 02:30 has actually passed.
+     * It fires when the booking becomes *past*, which is midnight after its
+     * own day and not the moment it ended - so a customer who has not turned
+     * up yet still has the rest of the day to arrive and pay. "Now" comes from
+     * WordPress rather than NOW(), and the boundary is built with
+     * HRB_Capabilities::becomes_past_at_sql(), so a booking running 23:30 to
+     * 02:30 is measured from the day it finishes on rather than the one it
+     * started on.
      *
      * @since 1.18.0
      * @param string|null $now Y-m-d H:i:s to measure against; defaults to now
@@ -2364,8 +2381,8 @@ class HRB_Booking_Manager {
     public function mark_past_unpaid_as_no_show($now = null) {
         global $wpdb;
 
-        $now  = $now === null ? current_time('mysql') : $now;
-        $ends = HRB_Capabilities::ended_at_sql('b');
+        $now     = $now === null ? current_time('mysql') : $now;
+        $past_at = HRB_Capabilities::becomes_past_at_sql('b');
 
         // Bookings that were already no-shows before this rule existed, or that
         // someone marked by hand on a version that did not settle the money,
@@ -2377,7 +2394,7 @@ class HRB_Booking_Manager {
         $ids = $wpdb->get_col($wpdb->prepare(
             "SELECT b.id
              FROM {$wpdb->prefix}hrb_bookings b
-             WHERE {$ends} < %s
+             WHERE {$past_at} <= %s
              AND b.payment_status = %s
              AND b.status NOT IN ('cancelled', 'no_show')",
             $now,
