@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.1] - 2026-09-22
+
+### Fixed
+- **A room lock now blocks the slots that run past midnight.** Reported from the live site: a room locked from 17:13 on one day to 18:13 the next still offered 22:00–00:00, 22:30–00:30, 23:00–01:00 and 23:30–01:30 on the first day. The time-slot picker pinned both ends of a slot to the booking date, so a slot finishing after midnight came out as "22:00 to 00:00 **on the same day**" — a window running backwards, which fails every overlap test it is put through. The afternoon slots were blocked correctly, which is what made the lock look like it was half-working rather than broken.
+- **A lock sitting entirely on the following day is now seen at all.** The same code only ever fetched the booking date's own locks, so a slot starting at 23:30 and running into the next morning was never compared against a lock waiting for it there. The lock lookup now covers the whole span a slot starting on that date can reach.
+- Bookings themselves were never at risk: `HRB_Database::is_slot_locked()`, which guards the save, has always rolled a slot's end onto the next day correctly — so a locked slot could not actually be booked through it. What was wrong was the second, hand-written copy of that comparison used to *draw* the picker. Both lock checks now go through one `slot_overlaps_lock()` helper, so the two can no longer disagree. The admin booking form reads the same endpoint and is fixed with it.
+
 ## [1.18.0] - 2026-09-22
 
 ### Added

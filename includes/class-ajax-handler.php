@@ -1321,26 +1321,77 @@ class HRB_Ajax_Handler {
     }
 
     /**
+     * The wall-clock window a slot actually occupies, as two datetimes.
+     *
+     * A slot that ends at or before it starts runs past midnight and finishes
+     * on the *next* day: 22:00-00:00 on the 24th is 24th 22:00 to 25th 00:00,
+     * not 24th 22:00 to 24th 00:00. Pinning both ends to the booking date
+     * produces a window that runs backwards, which silently fails every
+     * overlap test it is put through.
+     *
+     * @since 1.18.1
+     * @param string $date       Y-m-d the slot starts on
+     * @param string $start_time H:i:s
+     * @param string $end_time   H:i:s
+     * @return array{0:string,1:string} [start datetime, end datetime]
+     */
+    public static function slot_datetime_range($date, $start_time, $end_time) {
+        $end_date = (strtotime($end_time) <= strtotime($start_time))
+            ? date('Y-m-d', strtotime($date . ' +1 day'))
+            : $date;
+
+        return [$date . ' ' . $start_time, $end_date . ' ' . $end_time];
+    }
+
+    /**
+     * Does a slot overlap a lock window?
+     *
+     * Half-open on both sides, so a slot that ends exactly when a lock begins
+     * — or begins exactly when one ends — is free.
+     *
+     * @since 1.18.1
+     * @param string $date       Y-m-d the slot starts on
+     * @param string $start_time H:i:s
+     * @param string $end_time   H:i:s
+     * @param string $lock_start Y-m-d H:i:s
+     * @param string $lock_end   Y-m-d H:i:s
+     * @return bool
+     */
+    public static function slot_overlaps_lock($date, $start_time, $end_time, $lock_start, $lock_end) {
+        list($slot_start, $slot_end) = self::slot_datetime_range($date, $start_time, $end_time);
+
+        return $slot_start < $lock_end && $slot_end > $lock_start;
+    }
+
+    /**
      * Generate available time slots for a given date and duration
      */
     public function generate_available_time_slots($room_id, $date, $duration, $booking_id = 0, $is_admin_param = false) {
         $available_slots = array();
         global $wpdb;
 
-        // Query room locks for the selected room and date
+        // How far a slot starting on this date can reach. A slot may start as
+        // late as 23:30 and run for as long as the duration list allows, so it
+        // can finish well into the following day - and a lock that sits
+        // entirely on that following day still blocks it. Fetching only the
+        // booking date's own locks left those slots looking free.
+        $lock_window_start = $date . ' 00:00:00';
+        $lock_window_end   = date('Y-m-d H:i:s', strtotime($date . ' +2 days'));
+
+        // Query room locks reaching into the selected room's bookable window
         $room_locks = $wpdb->get_results($wpdb->prepare(
-            "SELECT start_datetime, end_datetime 
-             FROM {$wpdb->prefix}hrb_room_locks 
-             WHERE room_id = %d AND start_datetime <= %s AND end_datetime >= %s",
-            $room_id, $date . ' 23:59:59', $date . ' 00:00:00'
+            "SELECT start_datetime, end_datetime
+             FROM {$wpdb->prefix}hrb_room_locks
+             WHERE room_id = %d AND start_datetime < %s AND end_datetime > %s",
+            $room_id, $lock_window_end, $lock_window_start
         ));
 
-        // Query master locks for the date
+        // Query master locks reaching into the same window
         $master_locks = $wpdb->get_results($wpdb->prepare(
-            "SELECT start_datetime, end_datetime 
-             FROM {$wpdb->prefix}hrb_master_locks 
-             WHERE start_datetime <= %s AND end_datetime >= %s",
-            $date . ' 23:59:59', $date . ' 00:00:00'
+            "SELECT start_datetime, end_datetime
+             FROM {$wpdb->prefix}hrb_master_locks
+             WHERE start_datetime < %s AND end_datetime > %s",
+            $lock_window_end, $lock_window_start
         ));
 
 
@@ -1429,25 +1480,17 @@ class HRB_Ajax_Handler {
 
                 // Check master locks with proper datetime overlap
                 foreach ($master_locks as $lock) {
-                    $slot_start_datetime = $date . ' ' . $start_time;
-                    $slot_end_datetime = $date . ' ' . $end_time;
-                    
-                    // Simple datetime overlap check
-                    if ($slot_start_datetime < $lock->end_datetime && $slot_end_datetime > $lock->start_datetime) {
+                    if (self::slot_overlaps_lock($date, $start_time, $end_time, $lock->start_datetime, $lock->end_datetime)) {
                         $is_locked = true;
                         $lock_type = 'master';
                         break;
                     }
                 }
-                
+
                 // Check room-specific locks (only if not already locked by master)
                 if (!$is_locked) {
                     foreach ($room_locks as $lock) {
-                        $slot_start_datetime = $date . ' ' . $start_time;
-                        $slot_end_datetime = $date . ' ' . $end_time;
-                        
-                        // Simple datetime overlap check
-                        if ($slot_start_datetime < $lock->end_datetime && $slot_end_datetime > $lock->start_datetime) {
+                        if (self::slot_overlaps_lock($date, $start_time, $end_time, $lock->start_datetime, $lock->end_datetime)) {
                             $is_locked = true;
                             $lock_type = 'room';
                             break;
