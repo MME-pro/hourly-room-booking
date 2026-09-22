@@ -40,6 +40,21 @@ function hrb_can_view_financials(): bool {
 }
 
 /**
+ * May the current user be shown a screen's stats header?
+ *
+ * The row of summary cards above a working table - what the month took,
+ * how many transactions there have been - as opposed to the figures in
+ * the table itself. That headline is ours: a client Admin still sees and
+ * works every payment on the Payments screen, they are just not given the
+ * totals across the top. See HRB_Capabilities::STATS.
+ *
+ * @since 1.18.0
+ */
+function hrb_can_view_stats(): bool {
+    return HRB_Capabilities::can_view_stats();
+}
+
+/**
  * May the current user be shown what a single booking costs?
  *
  * The desk's question - what does this customer owe - as opposed to the
@@ -94,6 +109,70 @@ function hrb_get_payment_method_label(string $payment_method): string {
 }
 
 /**
+ * Is the internal "paid by bank transfer" marker switched on?
+ *
+ * Bank transfer is not a payment method here. It is a note the desk makes on
+ * a booking it has already settled by hand, so nothing about it is ever shown
+ * to a customer or offered in the public booking flow.
+ *
+ * @since 1.18.0
+ */
+function hrb_bank_transfer_enabled(): bool {
+    return (bool) HRB_Settings::getInstance()->get('hrb_bank_transfer_enabled');
+}
+
+/**
+ * The account a booking marked as paid by transfer was paid into.
+ *
+ * Empty fields fall back to the company bank details under Settings → Company
+ * Information, which is where the cancellation-fee invoice already reads them
+ * from, so a site that has filled those in does not have to type the IBAN a
+ * second time.
+ *
+ * @since 1.18.0
+ * @return array{bank_name:string,account_holder:string,iban:string,bic:string,reference:string,instructions:string}
+ */
+function hrb_get_bank_transfer_details(): array {
+    $settings = HRB_Settings::getInstance();
+
+    $read = static function (string $key, string $fallback_key = '') use ($settings): string {
+        $value = trim((string) $settings->get($key, ''));
+        if ($value === '' && $fallback_key !== '') {
+            $value = trim((string) $settings->get($fallback_key, ''));
+        }
+        return $value;
+    };
+
+    return array(
+        'bank_name'      => $read('hrb_bank_transfer_bank_name'),
+        'account_holder' => $read('hrb_bank_transfer_account_holder', 'hrb_bank_account_holder'),
+        'iban'           => $read('hrb_bank_transfer_iban', 'hrb_bank_iban'),
+        'bic'            => $read('hrb_bank_transfer_bic', 'hrb_bank_bic'),
+        'reference'      => $read('hrb_bank_transfer_reference'),
+        'instructions'   => $read('hrb_bank_transfer_instructions'),
+    );
+}
+
+/**
+ * The payment reference to quote on the transfer.
+ *
+ * The setting is a template; `{booking_reference}` is replaced with the
+ * booking's own reference. On the "add booking" form there is no reference
+ * yet, so the placeholder is left standing rather than blanked out.
+ *
+ * @since 1.18.0
+ */
+function hrb_get_bank_transfer_reference(string $booking_reference = ''): string {
+    $details = hrb_get_bank_transfer_details();
+
+    if ($details['reference'] === '' || $booking_reference === '') {
+        return $details['reference'];
+    }
+
+    return str_replace('{booking_reference}', $booking_reference, $details['reference']);
+}
+
+/**
  * Get translated payment status label
  */
 function hrb_get_payment_status_label(string $status): string {
@@ -103,7 +182,8 @@ function hrb_get_payment_status_label(string $status): string {
         'cancelled' => __('Cancelled', 'hourly-room-booking'),
         'failed' => __('Failed', 'hourly-room-booking'),
         'refunded' => __('Refunded', 'hourly-room-booking'),
-        'partially_refunded' => __('Partially Refunded', 'hourly-room-booking')
+        'partially_refunded' => __('Partially Refunded', 'hourly-room-booking'),
+        'nil' => __('Nil', 'hourly-room-booking')
     );
     
     return isset($status_labels[$status]) ? $status_labels[$status] : ucfirst(str_replace('_', ' ', $status));

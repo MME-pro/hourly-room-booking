@@ -62,6 +62,13 @@ class HRB_Settings_Helper {
             'hrb_paypal_client_id' => __('PayPal Client ID', 'hourly-room-booking'),
             'hrb_paypal_client_secret' => __('PayPal Client Secret', 'hourly-room-booking'),
             'hrb_paypal_fee_percentage' => __('PayPal Fee Percentage', 'hourly-room-booking'),
+            'hrb_bank_transfer_enabled' => __('Enable Bank Transfer Note', 'hourly-room-booking'),
+            'hrb_bank_transfer_bank_name' => __('Bank Name', 'hourly-room-booking'),
+            'hrb_bank_transfer_account_holder' => __('Account Holder', 'hourly-room-booking'),
+            'hrb_bank_transfer_iban' => __('IBAN / Account Number', 'hourly-room-booking'),
+            'hrb_bank_transfer_bic' => __('BIC / SWIFT', 'hourly-room-booking'),
+            'hrb_bank_transfer_reference' => __('Payment Reference', 'hourly-room-booking'),
+            'hrb_bank_transfer_instructions' => __('Payment Instructions', 'hourly-room-booking'),
             'hrb_email_notifications' => __('Email Notifications', 'hourly-room-booking'),
             'hrb_sms_notifications' => __('SMS Notifications', 'hourly-room-booking'),
             'hrb_whatsapp_notifications' => __('WhatsApp Notifications', 'hourly-room-booking'),
@@ -165,6 +172,13 @@ class HRB_Settings_Helper {
             'hrb_max_concurrent_bookings' => __('Maximum concurrent bookings per customer', 'hourly-room-booking'),
             'hrb_paypal_sandbox' => __('Use PayPal sandbox for testing', 'hourly-room-booking'),
             'hrb_paypal_fee_percentage' => __('PayPal transaction fee percentage', 'hourly-room-booking'),
+            'hrb_bank_transfer_enabled' => __('Show a "Paid by bank transfer" checkbox when creating or editing a booking in the admin. It is an internal note and is never shown to customers or offered in the public booking form.', 'hourly-room-booking'),
+            'hrb_bank_transfer_bank_name' => __('Name of the bank holding the account. Shown with the checkbox so whoever reconciles the booking can see which account to look at.', 'hourly-room-booking'),
+            'hrb_bank_transfer_account_holder' => __('Leave empty to use the account holder from Company Information.', 'hourly-room-booking'),
+            'hrb_bank_transfer_iban' => __('Leave empty to use the IBAN from Company Information.', 'hourly-room-booking'),
+            'hrb_bank_transfer_bic' => __('Leave empty to use the BIC from Company Information.', 'hourly-room-booking'),
+            'hrb_bank_transfer_reference' => __('The reference to look for on the statement. {booking_reference} is replaced with the booking reference.', 'hourly-room-booking'),
+            'hrb_bank_transfer_instructions' => __('Optional note for your team, shown with the bank details on the booking form.', 'hourly-room-booking'),
             'hrb_email_notifications' => __('Send email notifications for bookings', 'hourly-room-booking'),
             'hrb_sms_notifications' => __('Send SMS notifications via Twilio', 'hourly-room-booking'),
             'hrb_whatsapp_notifications' => __('Send WhatsApp notifications', 'hourly-room-booking'),
@@ -239,7 +253,8 @@ class HRB_Settings_Helper {
     public function get_setting_field_type(string $key): string {
         $boolean_fields = ['hrb_paypal_sandbox', 'hrb_enable_guest_booking', 'hrb_require_otp',
                           'hrb_email_notifications', 'hrb_sms_notifications', 'hrb_whatsapp_notifications',
-                          'hrb_admin_email_notifications', 'hrb_staff_email_notifications'];
+                          'hrb_admin_email_notifications', 'hrb_staff_email_notifications',
+                          'hrb_bank_transfer_enabled'];
 
         $number_fields = ['hrb_booking_advance_days', 'hrb_cancellation_hours', 'hrb_default_booking_duration',
                          'hrb_cooldown_minutes', 'hrb_max_concurrent_bookings', 'hrb_price_2_hours',
@@ -251,7 +266,7 @@ class HRB_Settings_Helper {
         $email_list_fields = ['hrb_staff_emails', 'hrb_daily_summary_emails'];
         $time_fields = ['hrb_daily_summary_time'];
         $password_fields = ['hrb_paypal_client_secret', 'hrb_twilio_token', 'hrb_whatsapp_token'];
-        $textarea_fields = ['hrb_company_address'];
+        $textarea_fields = ['hrb_company_address', 'hrb_bank_transfer_instructions'];
         $file_fields = ['hrb_company_logo'];
         $select_fields = ['hrb_timezone', 'hrb_terms_page', 'hrb_privacy_page', 'hrb_currency'];
 
@@ -302,6 +317,12 @@ class HRB_Settings_Helper {
             'hrb_bank_account_holder' => __('Adam Czapiewski', 'hourly-room-booking'),
             'hrb_bank_iban' => __('DE37 5901 0066 0861 4296 67', 'hourly-room-booking'),
             'hrb_bank_bic' => __('PBNKDEFF', 'hourly-room-booking'),
+            'hrb_bank_transfer_bank_name' => __('e.g. Postbank', 'hourly-room-booking'),
+            'hrb_bank_transfer_account_holder' => __('Leave empty to use the company account holder', 'hourly-room-booking'),
+            'hrb_bank_transfer_iban' => __('Leave empty to use the company IBAN', 'hourly-room-booking'),
+            'hrb_bank_transfer_bic' => __('Leave empty to use the company BIC', 'hourly-room-booking'),
+            'hrb_bank_transfer_reference' => __('Booking {booking_reference}', 'hourly-room-booking'),
+            'hrb_bank_transfer_instructions' => __('e.g. Please transfer the full amount within 7 days.', 'hourly-room-booking'),
             'hrb_company_logo' => __('Upload company logo for invoices', 'hourly-room-booking'),
             'hrb_admin_email' => __('Enter admin email', 'hourly-room-booking'),
             'hrb_staff_emails' => __('name@example.com', 'hourly-room-booking'),

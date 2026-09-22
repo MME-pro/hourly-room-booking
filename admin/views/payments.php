@@ -74,8 +74,10 @@ $payments = $payments_data['payments'];
 $total_count = $payments_data['total'];
 $total_pages = ceil($total_count / $per_page);
 
-// Get payment statistics
-$payment_stats = $payment_manager->get_payment_statistics($filters);
+// Get payment statistics. Only the stats header uses these, so the query is
+// skipped for everyone it is not drawn for.
+$hrb_show_payment_stats = hrb_can_view_stats();
+$payment_stats = $hrb_show_payment_stats ? $payment_manager->get_payment_statistics($filters) : [];
 
 // Get currency symbol from settings
 $currency_symbol = hrb_get_currency_symbol();
@@ -101,9 +103,11 @@ $currency_symbol = hrb_get_currency_symbol();
         </div>
     </div>
 
-    <!-- Payment Statistics. The books, not the desk: an Employee works the
-         payment list below but is not shown what the month took. -->
-    <?php if (hrb_can_view_financials()): ?>
+    <!-- Payment Statistics. Super Admin only. This is the headline read on how
+         the installation is doing, not the desk's work and not the client's
+         books: an Admin still sees and works every payment in the list below,
+         they are simply not given the totals across the top of it. -->
+    <?php if ($hrb_show_payment_stats): ?>
     <div class="hrb-stats-grid">
         <div class="hrb-stat-card">
             <div class="hrb-stat-content">

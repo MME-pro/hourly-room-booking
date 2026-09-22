@@ -32,6 +32,7 @@ class HRB_Booking_Manager {
         add_action('hrb_cleanup_expired_bookings', array($this, 'cleanup_expired_bookings'));
         add_action('hrb_send_booking_reminders', array($this, 'send_booking_reminders'));
         add_action('hrb_cleanup_incomplete_payments', array($this, 'cleanup_incomplete_payments'));
+        add_action(self::NO_SHOW_CRON_HOOK, array($this, 'mark_past_unpaid_as_no_show'));
     }
     
     /**
@@ -49,6 +50,15 @@ class HRB_Booking_Manager {
         // Schedule cleanup of incomplete PayPal payments every 5 minutes
         if (!wp_next_scheduled('hrb_cleanup_incomplete_payments')) {
             wp_schedule_event(time(), 'hrb_five_minutes', 'hrb_cleanup_incomplete_payments');
+        }
+
+        // Close off past unpaid bookings hourly. The expiry sweep this used to
+        // ride along with runs once a day, which meant a booking that finished
+        // unpaid at nine in the morning could still be sitting in the pending
+        // figures the following evening. An hour is as coarse as the question
+        // gets: a booking ends on the hour or the half hour, not in between.
+        if (!wp_next_scheduled(self::NO_SHOW_CRON_HOOK)) {
+            wp_schedule_event(time(), 'hourly', self::NO_SHOW_CRON_HOOK);
         }
     }
     
@@ -134,7 +144,10 @@ class HRB_Booking_Manager {
             'is_anonymous' => isset($data['is_anonymous']) ? intval($data['is_anonymous']) : 0,
             'first_name' => isset($data['first_name']) ? sanitize_text_field($data['first_name']) : null,
             'last_name' => isset($data['last_name']) ? sanitize_text_field($data['last_name']) : null,
-            'price_override' => $price_override
+            'price_override' => $price_override,
+            // Internal marker only: the desk noting it settled this booking by
+            // bank transfer. Never set from the public booking flow.
+            'paid_by_bank_transfer' => isset($data['paid_by_bank_transfer']) ? intval($data['paid_by_bank_transfer']) : 0
         );
         
         
@@ -161,7 +174,7 @@ class HRB_Booking_Manager {
             $result = $wpdb->insert(
                 $wpdb->prefix . 'hrb_bookings',
                 $booking_data,
-                array('%s', '%d', '%d', '%s', '%s', '%s', '%f', '%f', '%d', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%d')
+                array('%s', '%d', '%d', '%s', '%s', '%s', '%f', '%f', '%d', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%s', '%s', '%d', '%d')
             );
             if ($result === false) {
                 $wpdb_error = $wpdb->last_error;
@@ -1352,6 +1365,25 @@ class HRB_Booking_Manager {
     }
 
     /**
+     * Does this edit change nothing the customer would notice?
+     *
+     * Two cases end up here. One is the internal room move already covered by
+     * is_room_only_change(). The other is an edit that touched only a field
+     * deliberately kept out of the comparison — the internal "paid by bank
+     * transfer" marker is one — which leaves no diff at all.
+     *
+     * Without this, ticking that box and saving would send the customer a
+     * "your booking was modified" email about a note they cannot see.
+     *
+     * @since 1.18.0
+     */
+    public static function is_internal_only_change(array $submitted, array $current) {
+        $changed = self::diff_booking_fields($submitted, $current);
+
+        return $changed === [] || $changed === ['room_id'];
+    }
+
+    /**
      * Parse a submitted list of booking IDs
      *
      * The bookings list table posts its checked rows as one comma separated
@@ -1582,24 +1614,34 @@ class HRB_Booking_Manager {
      */
     public function cleanup_expired_bookings() {
         global $wpdb;
-        
-        
+
+        $now = current_time('mysql');
+
+        // No-shows first, and the order is the point. A booking whose time is
+        // over and whose money never came is a no-show, not an abandoned
+        // booking that expired before it ran - so it has to be claimed here,
+        // before the expiry sweep below can cancel it. Once marked it no
+        // longer matches either of the passes that follow.
+        $this->mark_past_unpaid_as_no_show($now);
+
         // Get expired pending bookings before cancelling them
-        $expired_bookings = $wpdb->get_results(
+        $expired_bookings = $wpdb->get_results($wpdb->prepare(
             "SELECT id, payment_method, payment_status 
              FROM {$wpdb->prefix}hrb_bookings 
              WHERE status = 'pending' 
-             AND CONCAT(booking_date, ' ', start_time) < NOW() - INTERVAL 1 HOUR"
-        );
+             AND CONCAT(booking_date, ' ', start_time) < %s - INTERVAL 1 HOUR",
+            $now
+        ));
         
         // Mark expired pending bookings as cancelled
-        $wpdb->query(
+        $wpdb->query($wpdb->prepare(
             "UPDATE {$wpdb->prefix}hrb_bookings 
              SET status = 'cancelled', 
                  admin_notes = CONCAT(COALESCE(admin_notes, ''), '\nAuto-cancelled: expired') 
              WHERE status = 'pending' 
-             AND CONCAT(booking_date, ' ', start_time) < NOW() - INTERVAL 1 HOUR"
-        );
+             AND CONCAT(booking_date, ' ', start_time) < %s - INTERVAL 1 HOUR",
+            $now
+        ));
         
         // Auto-cancel payment status for onsite payments when bookings are auto-cancelled
         foreach ($expired_bookings as $booking) {
@@ -1614,19 +1656,24 @@ class HRB_Booking_Manager {
             }
         }
         
-        // Mark confirmed bookings as completed when their time has passed
-        // This is the primary logic: confirmed bookings become completed when time passes
-        $completed_count = $wpdb->query(
-            "UPDATE {$wpdb->prefix}hrb_bookings 
-             SET status = 'completed' 
-             WHERE status = 'confirmed' 
-             AND CONCAT(booking_date, ' ', end_time) < NOW()"
-        );
-        
-        
-        // Mark no-show bookings (this should be a separate manual process or different logic)
-        // For now, we'll keep this as a separate query that can be run manually
-        // or triggered by admin action, not automatically
+        // Mark confirmed bookings as completed when their time has passed.
+        // Whatever is still confirmed at this point was paid for - the unpaid
+        // ones were taken by the no-show pass above.
+        //
+        // The end is built the same way the no-show pass builds it, against
+        // the same "now". CONCAT(booking_date, end_time) read a booking
+        // running 23:30 to 02:30 as having ended at 02:30 that *morning*, so
+        // it was completed before it had begun; and NOW() is the database
+        // server's clock rather than the plugin's timezone.
+        $ends = HRB_Capabilities::ended_at_sql('b');
+
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}hrb_bookings b
+             SET b.status = 'completed' 
+             WHERE b.status = 'confirmed' 
+             AND {$ends} < %s",
+            $now
+        ));
     }
     
     /**
@@ -2128,6 +2175,31 @@ class HRB_Booking_Manager {
                 $this->maybe_apply_cancellation_fee($booking_id);
             }
 
+            // A booking marked no-show by hand settles the same way the hourly
+            // pass settles one: money that was never collected is voided rather
+            // than left pending in every total. The desk reaching the same
+            // conclusion sooner than the clock does should not leave the
+            // booking in a different state.
+            //
+            // Only the money is touched here. The "No-Show" note exists to
+            // explain a change nobody made, and an admin who set the status
+            // themselves knows why it changed.
+            if (HRB_Status_Constants::BOOKING_STATUS_NO_SHOW === $status) {
+                $booking = $this->get_booking($booking_id);
+
+                if ($booking && HRB_Status_Constants::PAYMENT_STATUS_PENDING === $booking->payment_status) {
+                    $wpdb->update(
+                        $wpdb->prefix . 'hrb_bookings',
+                        ['payment_status' => HRB_Status_Constants::PAYMENT_STATUS_NIL],
+                        ['id' => $booking_id],
+                        ['%s'],
+                        ['%d']
+                    );
+
+                    $this->void_uncollected_payments([$booking_id]);
+                }
+            }
+
             // Send notification based on status change
             $notification_types = [
                 'confirmed' => 'booking_confirmation',
@@ -2188,22 +2260,225 @@ class HRB_Booking_Manager {
     }
     
     /**
-     * Mark bookings as no-show (manual process)
-     * This should be called manually by admin when they know customer didn't show up
+     * Mark bookings as no-show.
+     *
+     * Kept under its old name for anything that called it; the rule it applies
+     * is mark_past_unpaid_as_no_show().
+     *
+     * @return int Number of bookings marked
      */
     public function mark_no_show_bookings() {
+        return $this->mark_past_unpaid_as_no_show();
+    }
+
+    /**
+     * The note left on a booking the pass marks.
+     *
+     * @since 1.18.0
+     */
+    const NO_SHOW_NOTE = 'No-Show';
+
+    /**
+     * Cron event that runs the no-show pass.
+     *
+     * @since 1.18.0
+     */
+    const NO_SHOW_CRON_HOOK = 'hrb_mark_no_show_bookings';
+
+    /**
+     * Does this booking count as a no-show?
+     *
+     * Three things have to be true together: the booking's time is over, the
+     * money never arrived, and nobody has already settled it one way or the
+     * other. A cancelled booking was called off in advance, which is a
+     * different thing from being stood up, and one already marked no-show is
+     * done with.
+     *
+     * Note what is *not* asked: which status the booking held, or how it was
+     * going to be paid. A booking still sitting at "pending" and one that was
+     * confirmed are the same case once the room has stood empty and the hour
+     * has gone by.
+     *
+     * The rule is a static function of its arguments so it can be checked
+     * without a database; mark_past_unpaid_as_no_show() asks the same
+     * question in SQL.
+     *
+     * @since 1.18.0
+     * @param string      $booking_status Booking status
+     * @param string      $payment_status Payment status on the booking
+     * @param string      $booking_date   Y-m-d
+     * @param string      $start_time     H:i:s
+     * @param string      $end_time       H:i:s
+     * @param string|null $now            Y-m-d H:i:s; defaults to now
+     * @return bool
+     */
+    public static function qualifies_as_no_show(
+        $booking_status,
+        $payment_status,
+        $booking_date,
+        $start_time,
+        $end_time,
+        $now = null
+    ) {
+        $status = strtolower(trim((string) $booking_status));
+        $paid   = strtolower(trim((string) $payment_status));
+
+        if (in_array($status, ['cancelled', 'no_show'], true)) {
+            return false;
+        }
+
+        if ('pending' !== $paid) {
+            return false;
+        }
+
+        return HRB_Capabilities::is_booking_passed($booking_date, $start_time, $end_time, $now);
+    }
+
+    /**
+     * Turn past unpaid bookings into no-shows.
+     *
+     * A booking whose end has gone by with the money never collected is not a
+     * payment anyone is still waiting for - the room stood empty and nobody
+     * came. Left alone it sat in the pending figures for ever, quietly
+     * inflating what the business believed it was owed. This closes it:
+     *
+     *   - the booking becomes **no_show**;
+     *   - its payment status becomes **nil**, the void - never taken, never
+     *     owed, counted in no total;
+     *   - "No-Show" is appended to the admin notes, so the screen says why it
+     *     changed rather than the status simply having moved on its own.
+     *
+     * The payment records behind it are voided on the same reasoning, but only
+     * the ones that were never collected. Money that actually arrived is left
+     * alone, and the cancellation-fee charge is left alone too: that is a real
+     * debt, and failing to turn up does not erase it.
+     *
+     * "Now" comes from WordPress rather than NOW(), and the end is built with
+     * HRB_Capabilities::ended_at_sql() so a booking running 23:30 to 02:30 is
+     * only over once 02:30 has actually passed.
+     *
+     * @since 1.18.0
+     * @param string|null $now Y-m-d H:i:s to measure against; defaults to now
+     * @return int Number of bookings marked
+     */
+    public function mark_past_unpaid_as_no_show($now = null) {
         global $wpdb;
-        
-        // Mark confirmed bookings as no-show if they are past their end time
-        // This is a separate method that can be called manually or on a different schedule
-        $result = $wpdb->query(
-            "UPDATE {$wpdb->prefix}hrb_bookings 
-             SET status = 'no_show' 
-             WHERE status = 'confirmed' 
-             AND CONCAT(booking_date, ' ', end_time) < NOW() - INTERVAL 2 HOUR"
-        );
-        
-        return $result;
+
+        $now  = $now === null ? current_time('mysql') : $now;
+        $ends = HRB_Capabilities::ended_at_sql('b');
+
+        // Bookings that were already no-shows before this rule existed, or that
+        // someone marked by hand on a version that did not settle the money,
+        // are still sitting in the pending figures. Settle them on the way
+        // past. Cheap, idempotent, and it means the pending total is right
+        // after one run rather than only for bookings that end from now on.
+        $this->settle_unpaid_no_shows();
+
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT b.id
+             FROM {$wpdb->prefix}hrb_bookings b
+             WHERE {$ends} < %s
+             AND b.payment_status = %s
+             AND b.status NOT IN ('cancelled', 'no_show')",
+            $now,
+            HRB_Status_Constants::PAYMENT_STATUS_PENDING
+        ));
+
+        if (empty($ids)) {
+            return 0;
+        }
+
+        // Safe to interpolate: every id has been through intval().
+        $in = implode(',', array_map('intval', $ids));
+
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}hrb_bookings
+             SET status = %s,
+                 payment_status = %s,
+                 admin_notes = TRIM(LEADING '\n' FROM CONCAT(COALESCE(admin_notes, ''), '\n', %s)),
+                 updated_at = %s
+             WHERE id IN ({$in})",
+            HRB_Status_Constants::BOOKING_STATUS_NO_SHOW,
+            HRB_Status_Constants::PAYMENT_STATUS_NIL,
+            self::NO_SHOW_NOTE,
+            $now
+        ));
+
+        $this->void_uncollected_payments($ids);
+
+        return count($ids);
+    }
+
+    /**
+     * Bring bookings already marked no-show into line with the rule.
+     *
+     * Their money is voided and their payment records with it. The booking's
+     * own status is not touched - it is already no-show - and no note is
+     * added, because nothing about the booking is being decided here.
+     *
+     * @since 1.18.0
+     * @return int Number of bookings settled
+     */
+    private function settle_unpaid_no_shows() {
+        global $wpdb;
+
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT id
+             FROM {$wpdb->prefix}hrb_bookings
+             WHERE status = %s
+             AND payment_status = %s",
+            HRB_Status_Constants::BOOKING_STATUS_NO_SHOW,
+            HRB_Status_Constants::PAYMENT_STATUS_PENDING
+        ));
+
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $in = implode(',', array_map('intval', $ids));
+
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}hrb_bookings
+             SET payment_status = %s
+             WHERE id IN ({$in})",
+            HRB_Status_Constants::PAYMENT_STATUS_NIL
+        ));
+
+        $this->void_uncollected_payments($ids);
+
+        return count($ids);
+    }
+
+    /**
+     * Void the payment records that were never collected.
+     *
+     * Only rows still sitting at "pending" are touched. A completed payment is
+     * money that arrived and stays on the books; a CANCELFEE_ row is a charge
+     * the customer genuinely owes.
+     *
+     * @since 1.18.0
+     * @param int[] $booking_ids Bookings whose payments should be voided
+     * @return int Number of payment records voided
+     */
+    private function void_uncollected_payments(array $booking_ids) {
+        global $wpdb;
+
+        if (empty($booking_ids)) {
+            return 0;
+        }
+
+        $in = implode(',', array_map('intval', $booking_ids));
+
+        return (int) $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}hrb_payments
+             SET status = %s
+             WHERE booking_id IN ({$in})
+             AND status = %s
+             AND (transaction_id IS NULL OR transaction_id NOT LIKE %s)",
+            HRB_Status_Constants::PAYMENT_STATUS_NIL,
+            HRB_Status_Constants::PAYMENT_STATUS_PENDING,
+            $wpdb->esc_like('CANCELFEE_') . '%'
+        ));
     }
     
     /**

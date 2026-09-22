@@ -2,10 +2,12 @@
 /**
  * Roles and capabilities
  *
- * Two roles run this plugin. An **Admin** sees everything: settings, money and
- * exports. An **Employee** runs the desk — bookings, the calendar, customers,
- * rooms and extras — and sees no money at all. Not a total, not a price, not a
- * revenue card, not a report.
+ * Three roles run this plugin. A **Super Admin** is us — the people who build
+ * and support the plugin — and is the only role shown the aggregate stats
+ * headers that sit above a screen. An **Admin** is the client: settings, money,
+ * exports, the whole business, minus those headers. An **Employee** runs the
+ * desk — bookings, the calendar, customers, rooms and extras — and sees no
+ * money at all. Not a total, not a price, not a revenue card, not a report.
  *
  * The money line is drawn by one capability, `hrb_view_financials`. Every
  * figure in the admin screens is behind it, so hiding a new one is a matter of
@@ -17,6 +19,9 @@
  * was the only role and carried everything. Renaming the slug would unassign
  * every existing user; renaming what it *means* is the point of this file.
  *
+ * A Super Admin is a plugin role rather than "whoever is a WordPress
+ * administrator", because on a client site the client usually is one.
+ *
  * @package HourlyRoomBooking
  * @since 1.13.0
  */
@@ -26,6 +31,25 @@ if (!defined('ABSPATH')) {
 }
 
 class HRB_Capabilities {
+
+    /**
+     * Seeing a screen's stats header - the row of cards above the working
+     * table that sums everything on it, rather than reporting one row.
+     *
+     * Separate from FINANCIALS on purpose. An Admin runs the business and
+     * needs its money: a booking's price, a payment record, the reports
+     * screen. What they are not given is the headline summary sitting above a
+     * screen - "Total Revenue", "This Month" - which is our read on how the
+     * installation is doing rather than theirs. Making that its own
+     * capability leaves the client every figure they work with and takes only
+     * the headline.
+     *
+     * Held by the Super Admin role alone. A WordPress administrator does not
+     * get it: on a client site the client is often one.
+     *
+     * @since 1.18.0
+     */
+    const STATS = 'hrb_view_stats';
 
     /**
      * Seeing the books: revenue cards, totals across bookings, the figures on
@@ -64,7 +88,14 @@ class HRB_Capabilities {
     const PAST_BOOKINGS = 'hrb_view_past_bookings';
 
     /**
-     * Role slug for full access.
+     * Role slug for our own access: everything, stats headers included.
+     *
+     * @since 1.18.0
+     */
+    const ROLE_SUPER_ADMIN = 'hrb_super_admin';
+
+    /**
+     * Role slug for the client's full access.
      */
     const ROLE_ADMIN = 'hrb_admin';
 
@@ -113,13 +144,26 @@ class HRB_Capabilities {
     }
 
     /**
+     * What a Super Admin may do: everything an Admin may, plus the stats
+     * headers.
+     *
+     * @since 1.18.0
+     * @return string[]
+     */
+    public static function super_admin_caps() {
+        return array_merge(self::admin_caps(), [
+            self::STATS,
+        ]);
+    }
+
+    /**
      * Every capability this plugin defines.
      *
      * @since 1.13.0
      * @return string[]
      */
     public static function all_caps() {
-        return array_values(array_diff(self::admin_caps(), ['read']));
+        return array_values(array_diff(self::super_admin_caps(), ['read']));
     }
 
     /**
@@ -137,6 +181,36 @@ class HRB_Capabilities {
     }
 
     /**
+     * What to write onto an Admin, role or user.
+     *
+     * admin_caps() with 'read' taken out. 'read' belongs to WordPress, not to
+     * this plugin: granting it to the administrator role would leave a
+     * capability behind on deactivation, which only removes what all_caps()
+     * names.
+     *
+     * @since 1.18.0
+     * @return string[]
+     */
+    public static function admin_granted_caps() {
+        return array_values(array_diff(self::all_caps(), self::admin_denied_caps()));
+    }
+
+    /**
+     * The capabilities an Admin must not hold.
+     *
+     * Same reason as employee_denied_caps(): earlier versions wrote the full
+     * set straight onto each Admin user, and a capability on the user outranks
+     * the role, so dropping it from the role alone would leave every existing
+     * Admin still seeing the stats headers.
+     *
+     * @since 1.18.0
+     * @return string[]
+     */
+    public static function admin_denied_caps() {
+        return array_values(array_diff(self::all_caps(), self::admin_caps()));
+    }
+
+    /**
      * May the current user see money?
      *
      * @since 1.13.0
@@ -144,6 +218,16 @@ class HRB_Capabilities {
      */
     public static function can_view_financials() {
         return function_exists('current_user_can') && current_user_can(self::FINANCIALS);
+    }
+
+    /**
+     * May the current user be shown a screen's stats header?
+     *
+     * @since 1.18.0
+     * @return bool
+     */
+    public static function can_view_stats() {
+        return function_exists('current_user_can') && current_user_can(self::STATS);
     }
 
     /**
@@ -183,14 +267,37 @@ class HRB_Capabilities {
         }
 
         $now = $now === null ? date('Y-m-d H:i:s') : $now;
-        $a   = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $alias);
 
         return sprintf(
-            " AND (CASE WHEN {$a}.end_time <= {$a}.start_time"
-            . " THEN TIMESTAMP(DATE_ADD({$a}.booking_date, INTERVAL 1 DAY), {$a}.end_time)"
-            . " ELSE TIMESTAMP({$a}.booking_date, {$a}.end_time) END) >= '%s'",
+            ' AND ' . self::ended_at_sql($alias) . " >= '%s'",
             esc_sql($now)
         );
+    }
+
+    /**
+     * When a booking finishes, as a SQL expression.
+     *
+     * The same rule booking_ends_at() applies in PHP: a row whose end does
+     * not follow its start ran past midnight, so its end belongs to the next
+     * day. Written once here because three separate places ask "is this
+     * booking over?" - the capability filter, the no-show pass and the
+     * completion pass - and a booking running 23:30 to 02:30 is only handled
+     * right if all three agree.
+     *
+     * Compare it against a time handed in from PHP rather than NOW(): the
+     * database server's clock and the plugin's timezone are not the same
+     * thing.
+     *
+     * @since 1.18.0
+     * @param string $alias Table alias the bookings table is under
+     * @return string SQL expression yielding a DATETIME
+     */
+    public static function ended_at_sql($alias = 'b') {
+        $a = preg_replace('/[^a-zA-Z0-9_]/', '', (string) $alias);
+
+        return "(CASE WHEN {$a}.end_time <= {$a}.start_time"
+            . " THEN TIMESTAMP(DATE_ADD({$a}.booking_date, INTERVAL 1 DAY), {$a}.end_time)"
+            . " ELSE TIMESTAMP({$a}.booking_date, {$a}.end_time) END)";
     }
 
     /**

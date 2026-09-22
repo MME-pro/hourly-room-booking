@@ -1196,6 +1196,18 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
         box-shadow: 0 1px 3px rgba(107, 114, 128, 0.3);
     }
 
+    .hrb-payment-nil {
+        background: linear-gradient(135deg, #9ca3af, #6b7280);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 1px 3px rgba(107, 114, 128, 0.3);
+    }
+
     .hrb-payment-cancelled {
         background: linear-gradient(135deg, #6b7280, #4b5563);
         color: white;

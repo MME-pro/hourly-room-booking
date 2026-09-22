@@ -193,6 +193,45 @@ class HRB_Settings {
             'max' => 10
         ],
 
+        // Bank transfer settings. The method itself is admin-only — see
+        // hrb_get_backend_only_payment_methods() — so these describe the
+        // account the desk tells the customer to pay into, nothing more.
+        'hrb_bank_transfer_enabled' => [
+            'default' => 1,
+            'type' => 'boolean',
+            'sanitize' => 'absint'
+        ],
+        'hrb_bank_transfer_bank_name' => [
+            'default' => '',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_transfer_account_holder' => [
+            'default' => '',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_transfer_iban' => [
+            'default' => '',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_transfer_bic' => [
+            'default' => '',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_transfer_reference' => [
+            'default' => 'Booking {booking_reference}',
+            'type' => 'string',
+            'sanitize' => 'sanitize_text_field'
+        ],
+        'hrb_bank_transfer_instructions' => [
+            'default' => '',
+            'type' => 'string',
+            'sanitize' => 'sanitize_textarea_field'
+        ],
+
         // Notification settings
         'hrb_email_notifications' => [
             'default' => 1,
@@ -1133,6 +1172,18 @@ class HRB_Settings {
                     'hrb_paypal_client_id',
                     'hrb_paypal_client_secret',
                     'hrb_paypal_fee_percentage'
+                ]
+            ],
+            'bank_transfer' => [
+                'title' => __('Bank Transfer Settings', 'hourly-room-booking'),
+                'settings' => [
+                    'hrb_bank_transfer_enabled',
+                    'hrb_bank_transfer_bank_name',
+                    'hrb_bank_transfer_account_holder',
+                    'hrb_bank_transfer_iban',
+                    'hrb_bank_transfer_bic',
+                    'hrb_bank_transfer_reference',
+                    'hrb_bank_transfer_instructions'
                 ]
             ],
             'notifications' => [

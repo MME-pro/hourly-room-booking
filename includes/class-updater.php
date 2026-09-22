@@ -593,6 +593,10 @@ class HRB_Updater {
             return $cached;
         }
 
+        // What we already knew, if anything. A lookup that fails must not be
+        // allowed to throw this away; see remember_failure().
+        $known = (is_array($cached) && !empty($cached['version'])) ? $cached : null;
+
         $empty = [
             // Why the last lookup came back with nothing, so the plugins row
             // can say so. Silence is the hardest version of this bug to
@@ -635,18 +639,15 @@ class HRB_Updater {
                     (int) wp_remote_retrieve_response_code($response)
                 );
 
-            // Cache the miss briefly so a broken API does not slow every
-            // admin page load down with a fresh 15 second timeout.
-            set_transient(self::CACHE_KEY, $empty, 15 * MINUTE_IN_SECONDS);
-            return $empty;
+            return $this->remember_failure($empty, $known);
         }
 
         $release = json_decode(wp_remote_retrieve_body($response), true);
 
         if (!is_array($release) || empty($release['tag_name']) || !empty($release['draft'])) {
             $empty['error'] = __('No published release found', 'hourly-room-booking');
-            set_transient(self::CACHE_KEY, $empty, 15 * MINUTE_IN_SECONDS);
-            return $empty;
+
+            return $this->remember_failure($empty, $known);
         }
 
         $header_data = $this->get_header_data();
@@ -694,6 +695,44 @@ class HRB_Updater {
         }
 
         return $data;
+    }
+
+    /**
+     * Cache a failed lookup without losing a good answer we already had
+     *
+     * This matters on a host where the lookup succeeds from wp-admin and
+     * fails from WP-Cron - which happens, and was found in the wild: the
+     * cron runs every few minutes, and without this each failure would
+     * overwrite a perfectly good release with an empty one for a quarter of
+     * an hour. Open the plugins screen inside that window and the update is
+     * invisible, even though the site could have fetched it perfectly well
+     * from where you are standing. The failing path must not be able to
+     * hide what the working path found.
+     *
+     * The error is kept either way, so the plugins row can still say what
+     * went wrong.
+     *
+     * @since 1.17.1
+     * @param array      $failure Empty payload carrying the error
+     * @param array|null $known   Last answer that had a version, if any
+     * @return array
+     */
+    private function remember_failure(array $failure, $known = null) {
+        if (is_array($known) && !empty($known['version'])) {
+            $known['error']      = $failure['error'];
+            $known['checked_at'] = $failure['checked_at'];
+
+            set_transient(self::CACHE_KEY, $known, self::cache_ttl_for($known['version'], HRB_VERSION));
+
+            return $known;
+        }
+
+        // Nothing better to fall back on. Cache the miss briefly so a broken
+        // API does not slow every admin page load down with a fresh 15
+        // second timeout.
+        set_transient(self::CACHE_KEY, $failure, 15 * MINUTE_IN_SECONDS);
+
+        return $failure;
     }
 
     /**

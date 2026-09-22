@@ -28,6 +28,19 @@ class HRB_Status_Constants {
     const PAYMENT_STATUS_FAILED = 'failed';
     const PAYMENT_STATUS_REFUNDED = 'refunded';
     const PAYMENT_STATUS_PARTIALLY_REFUNDED = 'partially_refunded';
+
+    /**
+     * Money that will never be taken, on a booking that will never be worked.
+     *
+     * A no-show owes nothing and paid nothing. "Cancelled" would say the
+     * booking was called off, which is the opposite of what happened - the
+     * slot was held, the room stood empty and nobody came. Nil is the void:
+     * the amount drops out of every pending figure without ever being counted
+     * as taken.
+     *
+     * @since 1.18.0
+     */
+    const PAYMENT_STATUS_NIL = 'nil';
     
     /**
      * Get booking status labels
@@ -53,6 +66,7 @@ class HRB_Status_Constants {
             self::PAYMENT_STATUS_FAILED => __('Failed', 'hourly-room-booking'),
             self::PAYMENT_STATUS_REFUNDED => __('Refunded', 'hourly-room-booking'),
             self::PAYMENT_STATUS_PARTIALLY_REFUNDED => __('Partially Refunded', 'hourly-room-booking'),
+            self::PAYMENT_STATUS_NIL => __('Nil', 'hourly-room-booking'),
         ];
     }
     
@@ -80,6 +94,7 @@ class HRB_Status_Constants {
             self::PAYMENT_STATUS_FAILED,
             self::PAYMENT_STATUS_REFUNDED,
             self::PAYMENT_STATUS_PARTIALLY_REFUNDED,
+            self::PAYMENT_STATUS_NIL,
         ];
     }
 }

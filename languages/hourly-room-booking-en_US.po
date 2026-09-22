@@ -2119,6 +2119,9 @@ msgstr "Number of additional people beyond the base (max 10)"
 msgid "Current booking: %1$s, %2$s hours. Add below what the customer wants on top; it becomes a separate additional charge."
 msgstr "Current booking: %1$s, %2$s hours. Add below what the customer wants on top; it becomes a separate additional charge."
 
+msgid "Room Booking Super Admin"
+msgstr "Room Booking Super Admin"
+
 msgid "Room Booking Admin"
 msgstr "Room Booking Admin"
 

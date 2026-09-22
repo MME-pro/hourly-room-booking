@@ -4242,6 +4242,9 @@ msgstr "Anzahl zusätzlicher Personen über die Basis hinaus (max. 10)"
 msgid "Current booking: %1$s, %2$s hours. Add below what the customer wants on top; it becomes a separate additional charge."
 msgstr "Aktuelle Buchung: %1$s, %2$s Stunden. Ergänzen Sie unten, was der Kunde zusätzlich möchte; daraus wird eine separate Zusatzbuchung."
 
+msgid "Room Booking Super Admin"
+msgstr "Raumbuchung Super-Administrator"
+
 msgid "Room Booking Admin"
 msgstr "Raumbuchung Administrator"
 
@@ -4325,3 +4328,85 @@ msgstr "Zahlungsdetails konnten nicht geladen werden"
 
 msgid "Failed to load payment details. Please try again."
 msgstr "Zahlungsdetails konnten nicht geladen werden. Bitte erneut versuchen."
+
+# Bank transfer (admin-only payment method)
+msgid "Bank Transfer Settings"
+msgstr "Einstellungen für Banküberweisung"
+
+msgid "Bank Name"
+msgstr "Name der Bank"
+
+msgid "IBAN / Account Number"
+msgstr "IBAN / Kontonummer"
+
+msgid "BIC / SWIFT"
+msgstr "BIC / SWIFT"
+
+msgid "Payment Reference"
+msgstr "Verwendungszweck"
+
+msgid "Payment Instructions"
+msgstr "Zahlungshinweise"
+
+msgid "Leave empty to use the account holder from Company Information."
+msgstr "Leer lassen, um den Kontoinhaber aus den Firmendaten zu verwenden."
+
+msgid "Leave empty to use the IBAN from Company Information."
+msgstr "Leer lassen, um die IBAN aus den Firmendaten zu verwenden."
+
+msgid "Leave empty to use the BIC from Company Information."
+msgstr "Leer lassen, um die BIC aus den Firmendaten zu verwenden."
+
+msgid "e.g. Postbank"
+msgstr "z. B. Postbank"
+
+msgid "Leave empty to use the company account holder"
+msgstr "Leer lassen, um den Kontoinhaber der Firma zu verwenden"
+
+msgid "Leave empty to use the company IBAN"
+msgstr "Leer lassen, um die IBAN der Firma zu verwenden"
+
+msgid "Leave empty to use the company BIC"
+msgstr "Leer lassen, um die BIC der Firma zu verwenden"
+
+msgid "Booking {booking_reference}"
+msgstr "Buchung {booking_reference}"
+
+msgid "e.g. Please transfer the full amount within 7 days."
+msgstr "z. B. Bitte überweisen Sie den vollen Betrag innerhalb von 7 Tagen."
+
+msgid "Bank"
+msgstr "Bank"
+
+msgid "Payment reference"
+msgstr "Verwendungszweck"
+
+msgid "Nil"
+msgstr "Entfällt"
+
+msgid "Nil (no-show)"
+msgstr "Entfällt (nicht erschienen)"
+
+msgid "Enable Bank Transfer Note"
+msgstr "Hinweis Banküberweisung aktivieren"
+
+msgid "Show a \"Paid by bank transfer\" checkbox when creating or editing a booking in the admin. It is an internal note and is never shown to customers or offered in the public booking form."
+msgstr "Beim Anlegen oder Bearbeiten einer Buchung im Adminbereich ein Kontrollkästchen \"Per Banküberweisung bezahlt\" anzeigen. Es ist eine interne Notiz und wird Kunden nie angezeigt oder im öffentlichen Buchungsformular angeboten."
+
+msgid "Name of the bank holding the account. Shown with the checkbox so whoever reconciles the booking can see which account to look at."
+msgstr "Name der kontoführenden Bank. Wird beim Kontrollkästchen angezeigt, damit beim Abgleich der Buchung erkennbar ist, welches Konto gemeint ist."
+
+msgid "The reference to look for on the statement. {booking_reference} is replaced with the booking reference."
+msgstr "Der Verwendungszweck, nach dem auf dem Kontoauszug gesucht wird. {booking_reference} wird durch die Buchungsnummer ersetzt."
+
+msgid "Optional note for your team, shown with the bank details on the booking form."
+msgstr "Optionaler Hinweis für das Team, der mit den Bankdaten im Buchungsformular angezeigt wird."
+
+msgid "Internal note"
+msgstr "Interne Notiz"
+
+msgid "Paid by bank transfer"
+msgstr "Per Banküberweisung bezahlt"
+
+msgid "For your records only — never shown to the customer and it does not change the booking or payment status."
+msgstr "Nur für Ihre Unterlagen — wird dem Kunden nie angezeigt und ändert weder den Buchungs- noch den Zahlungsstatus."

@@ -266,6 +266,9 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
             // Add admin_notes to booking_data (not validated by validator, but handled by booking manager)
             $booking_data['admin_notes'] = sanitize_textarea_field($_POST['admin_notes'] ?? '');
 
+            // Internal marker: the desk noting it settled this by bank transfer.
+            $booking_data['paid_by_bank_transfer'] = !empty($_POST['paid_by_bank_transfer']) ? 1 : 0;
+
             // Handle customer creation based on anonymous status
             if ($is_anonymous) {
                 // For anonymous bookings, use a single anonymous customer record
@@ -602,6 +605,11 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                     'payment_method' => sanitize_text_field($_POST['payment_method'] ?? ''),
                     'special_requests' => sanitize_textarea_field($_POST['special_requests'] ?? ''),
                     'admin_notes' => sanitize_textarea_field($_POST['admin_notes'] ?? ''),
+                    // Internal marker: the desk noting it settled this by bank
+                    // transfer. An unticked box posts nothing, so this has to
+                    // be written on every save or the marker could never be
+                    // cleared again.
+                    'paid_by_bank_transfer' => !empty($_POST['paid_by_bank_transfer']) ? 1 : 0,
                 ];
 
                 // Check if payment method changed to PayPal
@@ -712,7 +720,11 @@ if ($_POST && check_admin_referer('hrb_admin_action', 'hrb_nonce')) {
                 }
 
                 $room_only_change = HRB_Booking_Manager::is_room_only_change($compare_submitted, $compare_current);
-                $notify_customer  = !$room_only_change;
+                // An edit the customer cannot see gets no email: an internal
+                // room move, or a save that only touched the internal "paid by
+                // bank transfer" marker, which is kept out of the comparison
+                // above and so leaves no diff at all.
+                $notify_customer  = !HRB_Booking_Manager::is_internal_only_change($compare_submitted, $compare_current);
 
                 // Remove extras from update_data since it's handled separately
                 $extras_data = $update_data['extras'];
@@ -1263,6 +1275,90 @@ function hrb_booking_has_completed_payment($booking_id) {
 }
 
 /**
+ * The internal "paid by bank transfer" marker on the admin booking forms.
+ *
+ * Not a payment method: the booking still records how it was *meant* to be
+ * paid, and this is the desk recording that the money actually came in by
+ * transfer. It is admin-only and never reaches the customer, so it is a plain
+ * checkbox rather than anything the booking flow has to understand.
+ *
+ * The account from Settings → Bank Transfer is printed alongside it, hidden
+ * until the box is ticked, so whoever reconciles the booking can see which
+ * account the money should be on without leaving the form.
+ *
+ * @param bool   $checked           Whether the booking already carries the marker.
+ * @param string $booking_reference Reference of the booking being edited, if any.
+ */
+function hrb_render_bank_transfer_note($checked = false, $booking_reference = '') {
+    if (!hrb_bank_transfer_enabled()) {
+        return;
+    }
+
+    $details = hrb_get_bank_transfer_details();
+
+    $rows = array(
+        __('Bank', 'hourly-room-booking')              => $details['bank_name'],
+        __('Account holder', 'hourly-room-booking')    => $details['account_holder'],
+        __('IBAN', 'hourly-room-booking')              => $details['iban'],
+        __('BIC / SWIFT', 'hourly-room-booking')       => $details['bic'],
+        __('Payment reference', 'hourly-room-booking') => hrb_get_bank_transfer_reference($booking_reference),
+    );
+    $rows = array_filter($rows, static function ($value) {
+        return trim((string) $value) !== '';
+    });
+    ?>
+    <tr>
+        <th><label for="paid_by_bank_transfer"><?php _e('Internal note', 'hourly-room-booking'); ?></label></th>
+        <td>
+            <label for="paid_by_bank_transfer">
+                <input type="checkbox" name="paid_by_bank_transfer" id="paid_by_bank_transfer" value="1" <?php checked($checked); ?>>
+                <?php _e('Paid by bank transfer', 'hourly-room-booking'); ?>
+            </label>
+            <p class="description"><?php _e('For your records only — never shown to the customer and it does not change the booking or payment status.', 'hourly-room-booking'); ?></p>
+
+            <?php if (!empty($rows)): ?>
+                <div id="hrb-bank-transfer-details" style="display:<?php echo $checked ? 'block' : 'none'; ?>;max-width:520px;margin-top:10px;padding:12px 14px;background:#f6f7f7;border:1px solid #dcdcde;border-left:4px solid #2271b1;border-radius:4px;">
+                    <table style="margin:0;border-collapse:collapse;">
+                        <?php foreach ($rows as $row_label => $row_value): ?>
+                            <tr>
+                                <td style="padding:2px 12px 2px 0;color:#646970;"><?php echo esc_html($row_label); ?></td>
+                                <td style="padding:2px 0;font-weight:600;"><?php echo esc_html($row_value); ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </table>
+                    <?php if ($details['instructions'] !== ''): ?>
+                        <p class="description" style="margin:10px 0 0;"><?php echo nl2br(esc_html($details['instructions'])); ?></p>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </td>
+    </tr>
+    <?php
+}
+
+/**
+ * Reveal the bank details with the checkbox.
+ *
+ * Both admin booking forms use the same element ids, so one copy of the
+ * script serves each of them.
+ */
+function hrb_print_bank_transfer_toggle_script() {
+    if (!hrb_bank_transfer_enabled()) {
+        return;
+    }
+    ?>
+    <script>
+    jQuery(document).ready(function($) {
+        var $box = $('#paid_by_bank_transfer');
+        $box.on('change', function() {
+            $('#hrb-bank-transfer-details').toggle($box.is(':checked'));
+        });
+    });
+    </script>
+    <?php
+}
+
+/**
  * Calculate and update pending payment for additional services
  * 
  * @param int $booking_id Booking ID
@@ -1573,6 +1669,16 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             <th><?php _e('Payment Method', 'hourly-room-booking'); ?></th>
                             <td><?php echo esc_html(hrb_get_payment_method_label($booking->payment_method ?? 'N/A')); ?></td>
                         </tr>
+                        <?php // The desk's own note, not a payment method. Admin screens only. ?>
+                        <?php if (!empty($booking->paid_by_bank_transfer)): ?>
+                        <tr>
+                            <th><?php _e('Internal note', 'hourly-room-booking'); ?></th>
+                            <td>
+                                <span class="dashicons dashicons-yes-alt" style="color:#2271b1;vertical-align:text-bottom;"></span>
+                                <?php _e('Paid by bank transfer', 'hourly-room-booking'); ?>
+                            </td>
+                        </tr>
+                        <?php endif; ?>
                         <?php if ($booking->transaction_id): ?>
                             <tr>
                                 <th><?php _e('Transaction ID', 'hourly-room-booking'); ?></th>
@@ -2136,6 +2242,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                     <option value="completed" <?php selected($actual_payment_status, 'completed'); ?>><?php _e('Completed', 'hourly-room-booking'); ?></option>
                                     <option value="cancelled" <?php selected($actual_payment_status, 'cancelled'); ?>><?php _e('Cancelled', 'hourly-room-booking'); ?></option>
                                     <option value="refunded" <?php selected($actual_payment_status, 'refunded'); ?>><?php _e('Refunded', 'hourly-room-booking'); ?></option>
+                                    <option value="nil" <?php selected($actual_payment_status, 'nil'); ?>><?php _e('Nil (no-show)', 'hourly-room-booking'); ?></option>
                                 </select>
                             </td>
                         </tr>
@@ -2177,6 +2284,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                 </select>
                             </td>
                         </tr>
+                        <?php hrb_render_bank_transfer_note(!empty($booking->paid_by_bank_transfer), $booking->booking_reference ?? ''); ?>
                         <?php if (hrb_booking_has_completed_payment($booking->id)): ?>
                         <tr id="hrb-difference-payment-row">
                             <th><label for="difference_payment_method"><?php _e('Pay difference via', 'hourly-room-booking'); ?></label></th>
@@ -2325,6 +2433,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         </form>
     </div>
 
+        <?php hrb_print_bank_transfer_toggle_script(); ?>
+
         <script>
         jQuery(document).ready(function($) {
             // Manual price: show the block only for on-site/cash payment (edit form).
@@ -2444,6 +2554,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                                 </select>
                             </td>
                         </tr>
+                        <?php hrb_render_bank_transfer_note(); ?>
                         <tr>
                             <th><label for="booking_date"><?php _e('Date', 'hourly-room-booking'); ?></label></th>
                             <td><input type="date" name="booking_date" id="booking_date" class="regular-text"></td>
@@ -2612,6 +2723,8 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             </div>
         </div>
         
+        <?php hrb_print_bank_transfer_toggle_script(); ?>
+
         <script>
         // Whether this user may be shown money at all. See HRB_Capabilities.
         var hrbCanViewFinancials = <?php echo hrb_can_view_booking_amounts() ? 'true' : 'false'; ?>;
@@ -2662,8 +2775,11 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
             if (formData.special_requests) $('#special_requests').val(formData.special_requests);
             if (formData.admin_notes) $('#admin_notes').val(formData.admin_notes);
             if (formData.payment_status) $('#payment_status').val(formData.payment_status);
-            if (formData.payment_method) $('#payment_method').val(formData.payment_method);
-            
+            // Restoring the method after a failed submit has to fire change:
+            // the manual price row hangs off that event, and a bare .val()
+            // would leave it showing the previous method's state.
+            if (formData.payment_method) $('#payment_method').val(formData.payment_method).trigger('change');
+
             // Clear session data
             <?php unset($_SESSION['hrb_admin_booking_form_data']); ?>
             
@@ -4368,6 +4484,18 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
         box-shadow: 0 1px 3px rgba(107, 114, 128, 0.3);
     }
 
+    .hrb-payment-nil {
+        background: linear-gradient(135deg, #9ca3af, #6b7280);
+        color: white;
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 10px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 1px 3px rgba(107, 114, 128, 0.3);
+    }
+
     .hrb-payment-cancelled {
         background: linear-gradient(135deg, #6b7280, #4b5563);
         color: white;
@@ -4449,6 +4577,11 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
 
     .hrb-payment-status-partially_refunded {
         background: linear-gradient(135deg, #f59e0b, #d97706);
+        color: white;
+    }
+
+    .hrb-payment-status-nil {
+        background: linear-gradient(135deg, #9ca3af, #6b7280);
         color: white;
     }
 

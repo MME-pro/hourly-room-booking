@@ -1411,7 +1411,9 @@ class HRB_Admin {
                 SUM(CASE WHEN payment_method = 'paypal' THEN 1 ELSE 0 END) as paypal_payments,
                 SUM(CASE WHEN payment_method = 'onsite' THEN 1 ELSE 0 END) as onsite_payments,
                 SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END) as paid_amount,
-                SUM(CASE WHEN payment_status = 'pending' THEN total_amount ELSE 0 END) as pending_amount,
+                SUM(CASE WHEN payment_status = 'pending'
+                    AND status NOT IN ('cancelled', 'no_show')
+                    THEN total_amount ELSE 0 END) as pending_amount,
                 SUM(CASE WHEN payment_method = 'paypal' AND payment_status = 'paid' THEN total_amount * 0.03 ELSE 0 END) as paypal_fees
             FROM {$wpdb->prefix}hrb_bookings 
             WHERE booking_date BETWEEN %s AND %s
@@ -1623,18 +1625,26 @@ class HRB_Admin {
     }
 
     /**
-     * Create the plugin's two roles and keep them up to date
+     * Create the plugin's three roles and keep them up to date
      *
      * Rebuilt on every admin load so a capability added to
      * HRB_Capabilities reaches existing sites without a reinstall.
      *
      * @since 1.13.0 Split into Admin and Employee; see HRB_Capabilities.
+     * @since 1.18.0 Super Admin split off the top of Admin.
      */
     public static function add_user_roles() {
         // Rebuilt rather than patched, so a capability dropped from the map is
         // dropped from the role too.
+        remove_role(HRB_Capabilities::ROLE_SUPER_ADMIN);
         remove_role(HRB_Capabilities::ROLE_ADMIN);
         remove_role(HRB_Capabilities::ROLE_EMPLOYEE);
+
+        add_role(
+            HRB_Capabilities::ROLE_SUPER_ADMIN,
+            __('Room Booking Super Admin', 'hourly-room-booking'),
+            array_fill_keys(HRB_Capabilities::super_admin_caps(), true)
+        );
 
         add_role(
             HRB_Capabilities::ROLE_ADMIN,
@@ -1651,10 +1661,19 @@ class HRB_Admin {
         self::update_existing_staff_capabilities();
         self::update_existing_admin_capabilities();
 
+        // A WordPress administrator gets the plugin's run of the place, but
+        // not the stats headers: on a client site the client is usually an
+        // administrator, and those headers are the one thing being kept back
+        // from them. Taken away as well as withheld, because a site upgrading
+        // from before 1.18.0 was granted the whole set.
         $admin_role = get_role('administrator');
         if ($admin_role) {
-            foreach (HRB_Capabilities::all_caps() as $cap) {
+            foreach (HRB_Capabilities::admin_granted_caps() as $cap) {
                 $admin_role->add_cap($cap);
+            }
+
+            foreach (HRB_Capabilities::admin_denied_caps() as $cap) {
+                $admin_role->remove_cap($cap);
             }
         }
     }
@@ -1689,20 +1708,40 @@ class HRB_Admin {
     }
 
     /**
-     * Give every WordPress administrator the full set
+     * Settle what an Admin holds on the user record
+     *
+     * WordPress administrators and Room Booking Admins get the client's full
+     * set written onto them and the stats headers taken back off. Before
+     * 1.18.0 both were handed all_caps() directly, and a capability on the
+     * user outranks the role, so dropping it from the role alone would leave
+     * an upgraded site's Admins still seeing the headers.
+     *
+     * Anyone holding the Super Admin role is skipped: their role carries the
+     * headers, and nothing here should take them off again.
      *
      * @since 1.0.0
+     * @since 1.18.0 Revokes the stats headers as well as granting the rest.
      */
     public static function update_existing_admin_capabilities() {
-        foreach (get_users(array('role' => 'administrator')) as $user) {
-            foreach (HRB_Capabilities::all_caps() as $cap) {
+        $granted = HRB_Capabilities::admin_granted_caps();
+        $denied  = HRB_Capabilities::admin_denied_caps();
+
+        $admins = array_merge(
+            get_users(array('role' => 'administrator')),
+            get_users(array('role' => HRB_Capabilities::ROLE_ADMIN))
+        );
+
+        foreach ($admins as $user) {
+            if (in_array(HRB_Capabilities::ROLE_SUPER_ADMIN, (array) $user->roles, true)) {
+                continue;
+            }
+
+            foreach ($granted as $cap) {
                 $user->add_cap($cap);
             }
-        }
 
-        foreach (get_users(array('role' => HRB_Capabilities::ROLE_ADMIN)) as $user) {
-            foreach (HRB_Capabilities::all_caps() as $cap) {
-                $user->add_cap($cap);
+            foreach ($denied as $cap) {
+                $user->remove_cap($cap);
             }
         }
     }
@@ -1713,6 +1752,7 @@ class HRB_Admin {
      * @since 1.0.0
      */
     public static function remove_user_roles() {
+        remove_role(HRB_Capabilities::ROLE_SUPER_ADMIN);
         remove_role(HRB_Capabilities::ROLE_ADMIN);
         remove_role(HRB_Capabilities::ROLE_EMPLOYEE);
 

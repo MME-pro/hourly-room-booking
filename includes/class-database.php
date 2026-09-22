@@ -102,6 +102,7 @@ class HRB_Database {
             total_amount decimal(10,2) NOT NULL,
             cancellation_fee decimal(10,2) NOT NULL DEFAULT 0.00,
             price_override tinyint(1) NOT NULL DEFAULT 0,
+            paid_by_bank_transfer tinyint(1) NOT NULL DEFAULT 0,
             status varchar(20) NOT NULL DEFAULT 'pending',
             payment_status varchar(20) NOT NULL DEFAULT 'pending',
             payment_method varchar(50) NULL,
@@ -715,6 +716,10 @@ class HRB_Database {
             // Manual price override flag (admin-set final price for on-site bookings)
             if (!in_array('price_override', $booking_columns)) {
                 $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN price_override tinyint(1) NOT NULL DEFAULT 0 AFTER total_amount");
+            }
+            // Internal "the desk settled this by bank transfer" marker
+            if (!in_array('paid_by_bank_transfer', $booking_columns)) {
+                $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN paid_by_bank_transfer tinyint(1) NOT NULL DEFAULT 0 AFTER price_override");
             }
         }
 
@@ -1813,6 +1818,34 @@ class HRB_Database {
         }
 
         update_option('hrb_price_override_migrated', 'yes');
+    }
+
+    /**
+     * The internal "paid by bank transfer" marker.
+     *
+     * A note the desk makes on a booking it has already settled by hand, not
+     * a payment method: nothing here reaches the customer or the public
+     * booking flow.
+     *
+     * @since 1.18.0
+     */
+    public static function ensure_paid_by_bank_transfer_column() {
+        global $wpdb;
+
+        // Cheap guard: only do the SHOW COLUMNS check once per install.
+        if (get_option('hrb_paid_by_bank_transfer_migrated') === 'yes') {
+            return;
+        }
+
+        $bookings_table = $wpdb->prefix . 'hrb_bookings';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$bookings_table}'")) {
+            $columns = array_column($wpdb->get_results("SHOW COLUMNS FROM {$bookings_table}"), 'Field');
+            if (!in_array('paid_by_bank_transfer', $columns)) {
+                $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN paid_by_bank_transfer tinyint(1) NOT NULL DEFAULT 0 AFTER price_override");
+            }
+        }
+
+        update_option('hrb_paid_by_bank_transfer_migrated', 'yes');
     }
 
     public static function seed_branded_email_templates() {

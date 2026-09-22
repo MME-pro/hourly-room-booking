@@ -1,11 +1,13 @@
 <?php
 /**
- * Tests for the Admin/Employee split and the report date ranges.
+ * Tests for the Super Admin/Admin/Employee split and the report date ranges.
  *
  * An Employee runs the desk and never sees money. That line is drawn by one
  * capability, hrb_view_financials, and the role maps here are what put every
- * screen on the right side of it. The denied list matters most: the role used
- * to carry everything, and those capabilities were written onto each user as
+ * screen on the right side of it. A second line, hrb_view_stats, sits above
+ * that one: an Admin runs the whole business and still does not get the stats
+ * headers, which are ours. The denied lists matter most: both roles used to
+ * carry everything, and those capabilities were written onto each user as
  * well, so they have to be named to be taken back.
  *
  * The date ranges belong to the export that was returning a bare 0. The
@@ -58,6 +60,10 @@ function admin_has(string $cap): bool {
     return in_array($cap, HRB_Capabilities::admin_caps(), true);
 }
 
+function super_admin_has(string $cap): bool {
+    return in_array($cap, HRB_Capabilities::super_admin_caps(), true);
+}
+
 // ---------------------------------------------------------------------------
 // What an Employee may do
 // ---------------------------------------------------------------------------
@@ -78,6 +84,7 @@ check('and works it: view, complete, cancel, refund', employee_has('hrb_manage_p
 echo "\n-- but never the money --\n";
 
 check('not the books', employee_has(HRB_Capabilities::FINANCIALS), false);
+check('not the stats headers', employee_has(HRB_Capabilities::STATS), false);
 check('no reports', employee_has('hrb_view_reports'), false);
 check('no settings', employee_has('hrb_manage_settings'), false);
 check('no exports', employee_has('hrb_export_data'), false);
@@ -89,9 +96,51 @@ check('no exports', employee_has('hrb_export_data'), false);
 echo "\n-- an Admin has the lot --\n";
 
 $missing_from_admin = array_values(array_diff(HRB_Capabilities::all_caps(), HRB_Capabilities::admin_caps()));
-check('nothing is withheld from an Admin', $missing_from_admin, []);
+check('the stats headers, and only those, are withheld from an Admin', $missing_from_admin, [
+    HRB_Capabilities::STATS,
+]);
 check('including the figures', admin_has(HRB_Capabilities::FINANCIALS), true);
+check('the books, the reports and the exports are all still theirs', [
+    admin_has('hrb_view_reports'),
+    admin_has('hrb_export_data'),
+    admin_has('hrb_manage_settings'),
+    admin_has('hrb_view_payments'),
+], [true, true, true, true]);
+check('but not the headline totals', admin_has(HRB_Capabilities::STATS), false);
 check('and everything the desk has', array_values(array_diff(HRB_Capabilities::employee_caps(), HRB_Capabilities::admin_caps())), []);
+
+// ---------------------------------------------------------------------------
+// What a Super Admin may do
+// ---------------------------------------------------------------------------
+
+echo "\n-- and a Super Admin has the headers on top --\n";
+
+check('the stats headers', super_admin_has(HRB_Capabilities::STATS), true);
+check('nothing is withheld from a Super Admin',
+    array_values(array_diff(HRB_Capabilities::all_caps(), HRB_Capabilities::super_admin_caps())), []);
+check('everything an Admin has',
+    array_values(array_diff(HRB_Capabilities::admin_caps(), HRB_Capabilities::super_admin_caps())), []);
+check('and it is the only thing that separates the two',
+    array_values(array_diff(HRB_Capabilities::super_admin_caps(), HRB_Capabilities::admin_caps())),
+    [HRB_Capabilities::STATS]);
+check('the three roles have three distinct slugs', count(array_unique([
+    HRB_Capabilities::ROLE_SUPER_ADMIN,
+    HRB_Capabilities::ROLE_ADMIN,
+    HRB_Capabilities::ROLE_EMPLOYEE,
+])), 3);
+
+// ---------------------------------------------------------------------------
+// What has to be taken back from an existing Admin
+// ---------------------------------------------------------------------------
+
+echo "\n-- revoking what an Admin used to be given --\n";
+
+check('exactly the stats headers are revoked', HRB_Capabilities::admin_denied_caps(), [
+    HRB_Capabilities::STATS,
+]);
+
+check('nothing an Admin needs is revoked',
+    array_values(array_intersect(HRB_Capabilities::admin_denied_caps(), HRB_Capabilities::admin_caps())), []);
 
 // ---------------------------------------------------------------------------
 // What has to be taken back from an existing Employee
@@ -108,6 +157,7 @@ check('exactly the books are revoked, not the desk', $denied, [
     'hrb_view_financials',
     'hrb_view_past_bookings',
     'hrb_view_reports',
+    'hrb_view_stats',
 ]);
 
 check('nothing the desk needs is revoked',

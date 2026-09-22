@@ -5,6 +5,21 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-09-22
+
+### Added
+- **An internal note for a booking settled by bank transfer.** Creating or editing a booking in the admin now offers a **Paid by bank transfer** checkbox. It is a note for your own records and nothing more: it is never shown to the customer, it is not offered anywhere in the public booking flow, and it leaves the booking status, the payment status and the payment method exactly as they were. Bank transfer is deliberately *not* a payment method here — the desk settles the money by hand and records that it did.
+- The account from the new **Settings → Bank Transfer** tab — bank name, account holder, IBAN, BIC and the reference to look for on the statement — is shown beside the checkbox once it is ticked, so whoever reconciles the booking can see which account the money should be on without leaving the form. The reference accepts `{booking_reference}`, which is filled in per booking. Account holder, IBAN and BIC fall back to the company bank details the cancellation-fee invoice already uses, so the IBAN does not have to be typed twice. A ticked booking carries the note on its detail view.
+- **A Super Admin role, and the stats headers now belong to it.** Three roles run the plugin instead of two. The row of summary cards above a screen — "Total Revenue", "This Month" — is our read on how an installation is doing rather than the client's, so it moves behind the new `hrb_view_stats` capability and the `hrb_super_admin` role. An Admin still sees and works every figure they run the business on: a booking's price, every payment record, the reports screen. They are simply not given the headline across the top. A WordPress administrator does not inherit this, because on a client site the client usually is one.
+- **Bookings nobody turned up for settle themselves.** An hourly job marks a past, unpaid, uncancelled booking as **no-show** and sets its payment status to the new **nil** — the void. A no-show owes nothing and paid nothing, so the amount drops out of every pending figure without ever being counted as taken. "Cancelled" would have claimed the booking was called off, which is the opposite of what happened: the slot was held, the room stood empty and nobody came.
+
+### Fixed
+- **A failed update check no longer hides a release the site already knew about.** Found in the wild: on some hosts the GitHub lookup succeeds from wp-admin and fails from WP-Cron. The cron runs every few minutes, and each failure used to overwrite a perfectly good release with an empty answer for fifteen minutes — open the Plugins screen inside that window and the update was invisible, on a site that could have fetched it fine from where you were standing. A failed lookup now keeps the last answer that had a version in it and only records the error alongside, so the failing path can no longer hide what the working path found.
+- **Ticking an internal note no longer emails the customer.** An admin edit decides whether to send a "your booking was modified" notice by diffing the customer-facing fields, and the old check matched a room move *exactly* — so an edit with no customer-facing change at all fell through to "notify". Saving the edit form untouched, or ticking only the new bank transfer note, mailed the customer about something they cannot see. An edit that changes nothing they would notice now sends nothing.
+
+### Database
+- `hrb_bookings` gains `paid_by_bank_transfer` (`tinyint(1)`, default `0`). Added on activation and by a one-time, option-gated migration on the next admin page load, so existing installs pick it up without reactivating.
+
 ## [1.17.0] - 2026-09-21
 
 ### Added
