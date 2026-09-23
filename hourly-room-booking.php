@@ -3,7 +3,7 @@
  * Plugin Name: Hourly Room Booking System
  * Plugin URI: https://mme-pro.de
  * Description: Professional room booking system with hourly slots, payment integration, and comprehensive management features.
- * Version: 1.23.0
+ * Version: 1.24.0
  * Author: MME-Pro Dev Team
  * Author URI: https://mme-pro.de
  * Requires at least: 5.0
@@ -48,7 +48,7 @@ if (defined('HRB_VERSION')) {
  * These constants are used throughout the plugin for consistency
  * and to avoid magic strings in the codebase.
  */
-define('HRB_VERSION', '1.23.0');
+define('HRB_VERSION', '1.24.0');
 define('HRB_MIN_PHP_VERSION', '7.4');
 define('HRB_MIN_WP_VERSION', '5.0');
 define('HRB_PLUGIN_FILE', __FILE__);
@@ -333,6 +333,7 @@ final class HourlyRoomBooking {
         add_action('admin_init', ['HRB_Database', 'seed_branded_email_templates']);
         add_action('admin_init', ['HRB_Database', 'ensure_price_override_column']);
         add_action('admin_init', ['HRB_Database', 'ensure_paid_by_bank_transfer_column']);
+        add_action('admin_init', ['HRB_Database', 'ensure_no_show_marked_at_column']);
         add_action('admin_init', ['HRB_Database', 'ensure_room_availability_columns']);
 
         // One-time move of the legacy single staff address onto the

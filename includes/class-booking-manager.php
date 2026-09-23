@@ -1059,6 +1059,7 @@ class HRB_Booking_Manager {
         if (isset($data['status'])
             && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW === $data['status']
             && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $booking->status) {
+            $this->stamp_no_show([$booking_id]);
             $this->notify_no_show([$booking_id], 'manual', $booking->status);
         }
 
@@ -2237,6 +2238,7 @@ class HRB_Booking_Manager {
                 }
 
                 if (HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $was) {
+                    $this->stamp_no_show([$booking_id]);
                     $this->notify_no_show([$booking_id], 'manual', $was);
                 }
             }
@@ -2429,27 +2431,136 @@ class HRB_Booking_Manager {
             HRB_Status_Constants::PAYMENT_STATUS_PENDING
         ));
 
-        if (empty($ids)) {
+        if (!empty($ids)) {
+            // Safe to interpolate: every id has been through intval().
+            $in = implode(',', array_map('intval', $ids));
+
+            $wpdb->query($wpdb->prepare(
+                "UPDATE {$wpdb->prefix}hrb_bookings
+                 SET status = %s,
+                     payment_status = %s,
+                     no_show_marked_at = %s,
+                     admin_notes = TRIM(LEADING '\n' FROM CONCAT(COALESCE(admin_notes, ''), '\n', %s)),
+                     updated_at = %s
+                 WHERE id IN ({$in})",
+                HRB_Status_Constants::BOOKING_STATUS_NO_SHOW,
+                HRB_Status_Constants::PAYMENT_STATUS_NIL,
+                $now,
+                self::NO_SHOW_NOTE,
+                $now
+            ));
+
+            $this->void_uncollected_payments($ids);
+        }
+
+        // Runs whether or not this pass marked anything: a day whose only
+        // no-shows were marked by hand still gets its summary.
+        $this->send_daily_no_show_summary($now);
+
+        return count($ids);
+    }
+
+    /**
+     * Option holding the moment the last no-show summary covered up to
+     *
+     * @since 1.24.0
+     */
+    const NO_SHOW_REPORTED_THROUGH = 'hrb_no_show_summary_reported_through';
+
+    /**
+     * Where the day's no-show window starts, or null if today is already done
+     *
+     * The pass runs hourly and the summary is daily, so something has to hold
+     * it to one mail. That something is the date: once a summary has gone out
+     * on a given day, nothing more is sent until the date turns over, and the
+     * next window then runs from where the last one stopped - which is what
+     * carries a no-show marked by hand yesterday afternoon into this
+     * morning's mail.
+     *
+     * With nothing recorded yet the window opens a day back, so the first
+     * summary reports the day that just ended rather than every no-show the
+     * site has ever had.
+     *
+     * A static function of its arguments, like qualifies_as_no_show(), so the
+     * awkward part can be checked without a database.
+     *
+     * @since 1.24.0
+     * @param string $through Y-m-d H:i:s the last summary covered up to, or ''
+     * @param string $now     Y-m-d H:i:s
+     * @return string|null Window start, or null when today is already reported
+     */
+    public static function no_show_report_window($through, $now) {
+        $through = trim((string) $through);
+        $now_ts  = strtotime($now);
+
+        if ($now_ts === false) {
+            return null;
+        }
+
+        if ($through === '' || strtotime($through) === false) {
+            // Nothing recorded yet: open the window a day back, so the first
+            // summary covers the day that just ended and not the whole history.
+            return date('Y-m-d H:i:s', $now_ts - DAY_IN_SECONDS);
+        }
+
+        if (date('Y-m-d', strtotime($through)) === date('Y-m-d', $now_ts)) {
+            return null;
+        }
+
+        return $through;
+    }
+
+    /**
+     * Send the day's no-show summary, once a day
+     *
+     * Reports every booking that became a no-show since the last summary,
+     * however it got there: the ones this pass just marked and the ones
+     * somebody marked by hand at the desk during the day. A booking marked by
+     * hand has already produced its own status-change mail at the time; this
+     * is the day's tally, and leaving those out made it an incomplete one.
+     *
+     * The pass runs hourly, so the day is what holds it to one mail: nothing
+     * is sent until the date has turned over, and the window then runs from
+     * the last summary to now. That is also why the moment is recorded on the
+     * booking rather than inferred - a no-show edited afterwards must not be
+     * reported a second time.
+     *
+     * @since 1.24.0
+     * @param string $now Y-m-d H:i:s to measure against
+     * @return int Number of bookings reported
+     */
+    private function send_daily_no_show_summary($now) {
+        global $wpdb;
+
+        $through = self::no_show_report_window(
+            (string) get_option(self::NO_SHOW_REPORTED_THROUGH, ''),
+            $now
+        );
+
+        // One summary a day. Until the date turns over, the day is not done.
+        if ($through === null) {
             return 0;
         }
 
-        // Safe to interpolate: every id has been through intval().
-        $in = implode(',', array_map('intval', $ids));
-
-        $wpdb->query($wpdb->prepare(
-            "UPDATE {$wpdb->prefix}hrb_bookings
-             SET status = %s,
-                 payment_status = %s,
-                 admin_notes = TRIM(LEADING '\n' FROM CONCAT(COALESCE(admin_notes, ''), '\n', %s)),
-                 updated_at = %s
-             WHERE id IN ({$in})",
+        $ids = $wpdb->get_col($wpdb->prepare(
+            "SELECT id
+             FROM {$wpdb->prefix}hrb_bookings
+             WHERE status = %s
+             AND no_show_marked_at > %s
+             AND no_show_marked_at <= %s
+             ORDER BY no_show_marked_at ASC",
             HRB_Status_Constants::BOOKING_STATUS_NO_SHOW,
-            HRB_Status_Constants::PAYMENT_STATUS_NIL,
-            self::NO_SHOW_NOTE,
+            $through,
             $now
         ));
 
-        $this->void_uncollected_payments($ids);
+        // Moved on whether or not anything was found, so a quiet day does not
+        // roll its window into the next one.
+        update_option(self::NO_SHOW_REPORTED_THROUGH, $now);
+
+        if (empty($ids)) {
+            return 0;
+        }
 
         $this->notify_no_show($ids, 'automatic');
 
@@ -2474,6 +2585,22 @@ class HRB_Booking_Manager {
      * @param string $from_status Status the booking held before the change
      * @return void
      */
+    private function stamp_no_show(array $ids, $now = null) {
+        global $wpdb;
+
+        if (empty($ids)) {
+            return;
+        }
+
+        $in  = implode(',', array_map('intval', $ids));
+        $now = $now === null ? current_time('mysql') : $now;
+
+        $wpdb->query($wpdb->prepare(
+            "UPDATE {$wpdb->prefix}hrb_bookings SET no_show_marked_at = %s WHERE id IN ({$in})",
+            $now
+        ));
+    }
+
     private function notify_no_show(array $ids, $trigger, $from_status = '') {
         if (empty($ids) || !class_exists('HRB_Daily_Summary')) {
             return;

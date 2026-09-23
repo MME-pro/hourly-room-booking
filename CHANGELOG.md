@@ -5,6 +5,16 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-09-23
+
+### Changed
+- **The daily no-show summary now reports every no-show of the day, however it was marked.** It used to list only the bookings the end-of-day pass itself marked, because the pass skips anything already sitting at `no_show` — so a booking somebody marked by hand at the desk during the day was missing from the day's tally, and the summary quietly understated it. Manual and automatic ones now appear together.
+- The summary is held to one mail a day by the date rather than by the pass having found something: the hourly pass sends nothing until the date turns over, and the window then runs from where the last summary stopped. A day whose only no-shows were marked by hand still gets its summary, which it previously did not.
+- A booking marked by hand still sends its own status-change mail at the time. That is unchanged — it now also appears in the next morning's summary, which is the point.
+
+### Database
+- New `no_show_marked_at` column on the bookings table, recording the moment a booking became a no-show. Both paths write it — the pass and a status changed by hand — and the summary selects on it. `updated_at` would have done the job until somebody edited a no-show booking, at which point it would have been reported a second time. Existing no-shows are left NULL rather than backfilled: they were marked before anything recorded the moment, and guessing would drop old bookings into today's summary. Added on the next admin load for existing sites, and part of the schema for new ones.
+
 ## [1.23.0] - 2026-09-23
 
 ### Added

@@ -284,6 +284,59 @@ check(
     HRB_Capabilities::becomes_past_at_sql('bDROPTABLEwp_hrb_bookings')
 );
 
+// ---------------------------------------------------------------------------
+// The daily summary's window
+//
+// The pass runs hourly, the summary is daily, and what holds it to one mail a
+// day is the date. The window that opens where the last one closed is what
+// carries a no-show marked by hand during the day into the next morning's
+// mail, rather than it being left out because the pass did not mark it.
+// ---------------------------------------------------------------------------
+
+echo "\n-- the daily no-show summary window --\n";
+
+if (!defined('DAY_IN_SECONDS')) {
+    define('DAY_IN_SECONDS', 86400);
+}
+
+check(
+    'a summary already sent today means nothing more goes out today',
+    HRB_Booking_Manager::no_show_report_window('2026-09-23 00:20:00', '2026-09-23 14:20:00'),
+    null
+);
+
+check(
+    'once the date turns over the window opens where the last one closed',
+    HRB_Booking_Manager::no_show_report_window('2026-09-23 00:20:00', '2026-09-24 00:20:00'),
+    '2026-09-23 00:20:00'
+);
+
+check(
+    'so a no-show marked by hand mid-afternoon is inside the next window',
+    strtotime('2026-09-23 16:40:00') > strtotime(
+        HRB_Booking_Manager::no_show_report_window('2026-09-23 00:20:00', '2026-09-24 00:20:00')
+    ),
+    true
+);
+
+check(
+    'with nothing recorded yet the window opens a day back, not at the epoch',
+    HRB_Booking_Manager::no_show_report_window('', '2026-09-24 00:20:00'),
+    '2026-09-23 00:20:00'
+);
+
+check(
+    'and a stored value that is not a time is treated the same way',
+    HRB_Booking_Manager::no_show_report_window('not a date', '2026-09-24 00:20:00'),
+    '2026-09-23 00:20:00'
+);
+
+check(
+    'a run later the same day, after a summary went out, still sends nothing',
+    HRB_Booking_Manager::no_show_report_window('2026-09-24 00:20:00', '2026-09-24 23:59:00'),
+    null
+);
+
 echo "\n";
 echo $failures === 0
     ? "All checks passed.\n"

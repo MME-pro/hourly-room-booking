@@ -103,6 +103,7 @@ class HRB_Database {
             cancellation_fee decimal(10,2) NOT NULL DEFAULT 0.00,
             price_override tinyint(1) NOT NULL DEFAULT 0,
             paid_by_bank_transfer tinyint(1) NOT NULL DEFAULT 0,
+            no_show_marked_at datetime NULL,
             status varchar(20) NOT NULL DEFAULT 'pending',
             payment_status varchar(20) NOT NULL DEFAULT 'pending',
             payment_method varchar(50) NULL,
@@ -720,6 +721,11 @@ class HRB_Database {
             // Internal "the desk settled this by bank transfer" marker
             if (!in_array('paid_by_bank_transfer', $booking_columns)) {
                 $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN paid_by_bank_transfer tinyint(1) NOT NULL DEFAULT 0 AFTER price_override");
+            }
+            // When this booking became a no-show, so the daily summary can
+            // report a day's worth of them however each one was marked
+            if (!in_array('no_show_marked_at', $booking_columns)) {
+                $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN no_show_marked_at datetime NULL AFTER paid_by_bank_transfer");
             }
         }
 
@@ -1846,6 +1852,39 @@ class HRB_Database {
         }
 
         update_option('hrb_paid_by_bank_transfer_migrated', 'yes');
+    }
+
+    /**
+     * Add the no_show_marked_at column to an existing install
+     *
+     * The daily summary reports every no-show of the day, however it was
+     * marked, which means knowing *when* each one became a no-show. Reading
+     * updated_at would do it until someone edits a no-show booking, at which
+     * point it would be reported a second time.
+     *
+     * Existing no-shows are left NULL rather than backfilled: they were
+     * marked before anything recorded the moment, and guessing would put old
+     * bookings into today's summary.
+     *
+     * @since 1.24.0
+     */
+    public static function ensure_no_show_marked_at_column() {
+        global $wpdb;
+
+        // Cheap guard: only do the SHOW COLUMNS check once per install.
+        if (get_option('hrb_no_show_marked_at_migrated') === 'yes') {
+            return;
+        }
+
+        $bookings_table = $wpdb->prefix . 'hrb_bookings';
+        if ($wpdb->get_var("SHOW TABLES LIKE '{$bookings_table}'")) {
+            $columns = array_column($wpdb->get_results("SHOW COLUMNS FROM {$bookings_table}"), 'Field');
+            if (!in_array('no_show_marked_at', $columns)) {
+                $wpdb->query("ALTER TABLE {$bookings_table} ADD COLUMN no_show_marked_at datetime NULL AFTER paid_by_bank_transfer");
+            }
+        }
+
+        update_option('hrb_no_show_marked_at_migrated', 'yes');
     }
 
     public static function seed_branded_email_templates() {
