@@ -356,10 +356,9 @@ class HRB_Booking_Manager {
             return new WP_Error('maximum_duration', sprintf(__('Maximum booking duration is %d hours', 'hourly-room-booking'), $max_duration));
         }
 
-        // Validate payment method based on duration (public: 4+ hours must use PayPal; admin exempt)
-        if (!$is_admin_context && $duration >= 4 && isset($data['payment_method']) && $data['payment_method'] !== 'paypal') {
-            return new WP_Error('payment_method_required', __('Bookings of 4 hours or more require PayPal payment', 'hourly-room-booking'));
-        }
+        // No duration forces a payment method. A booking of four hours or more
+        // used to be PayPal-only; both PayPal and on-site are now offered
+        // whatever the booking runs to.
 
         // Enforce the room's own bookable hours. Like the global window they
         // bound when the booking may start, not how long it runs.

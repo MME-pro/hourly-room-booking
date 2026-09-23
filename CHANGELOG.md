@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-09-23
+
+### Changed
+- **The length of a booking no longer decides how it is paid for.** A booking of four hours or more could only be paid by PayPal: the booking form hid the on-site option and forced PayPal from four hours up, the server refused any public booking of that length that named another method, and processing an on-site payment for one was refused outright. Both methods are now offered for every booking, whatever it runs to — a customer who wants to pay at the desk for a full day can.
+- The rule lived in four places, and all four are gone: the validation in `HRB_Booking_Manager::create_booking()`, the refusal in `HRB_Payment_Handler::process_onsite_payment()`, and the duration check in both copies of the booking form — including the branch that re-applied it after the anonymous-booking option was switched off.
+- The payment policy shown on the booking form says so: paying by PayPal or on site is offered whatever the booking's length. The separate note that bookings of four hours or more cannot be refunded stays, as its own line — that rule is unchanged.
+
 ## [1.21.0] - 2026-09-23
 
 ### Added

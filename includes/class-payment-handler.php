@@ -970,11 +970,6 @@ class HRB_Payment_Handler {
             return new WP_Error('booking_not_found', __('Booking not found', 'hourly-room-booking'));
         }
         
-        // For bookings 4+ hours, only PayPal is allowed
-        if ($booking->total_hours >= 4) {
-            return new WP_Error('payment_method_not_allowed', __('For bookings 4+ hours, only PayPal payment is allowed', 'hourly-room-booking'));
-        }
-        
         // Check if payment already exists for this booking
         global $wpdb;
         $existing_payment = $wpdb->get_var($wpdb->prepare(

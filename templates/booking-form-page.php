@@ -1725,8 +1725,8 @@ $label_no_slots_message = $settings->get_label('hrb_label_no_slots_message');
                 <div class="hrb-payment-notice hrb-info-box hrb-alert-info">
                     <strong><?php _e('Payment Policy:', 'hourly-room-booking'); ?></strong>
                     <ul>
-                        <li><?php _e('For bookings of 4 hours or more, payment via PayPal in advance is required. Please note that no refunds are possible in this case.', 'hourly-room-booking'); ?></li>
-                        <li><?php _e('For bookings under 4 hours, you can pay either via PayPal or on site.', 'hourly-room-booking'); ?></li>
+                        <li><?php _e('You can pay either via PayPal or on site, whatever the length of your booking.', 'hourly-room-booking'); ?></li>
+                        <li><?php _e('For bookings of 4 hours or more, please note that no refunds are possible.', 'hourly-room-booking'); ?></li>
                         <li><?php _e('There is a 3% processing fee for PayPal payments.', 'hourly-room-booking'); ?></li>
                     </ul>
                 </div>
@@ -2629,17 +2629,11 @@ $label_no_slots_message = $settings->get_label('hrb_label_no_slots_message');
         }
 
 
-        // Function to apply payment method restriction
+        // Both payment methods are offered whatever the booking runs to. This
+        // used to hide on-site and force PayPal from four hours up; the length
+        // of a booking no longer decides how it is paid for.
         function applyPaymentMethodRestriction() {
-            const duration = parseInt(form.find('select[name="duration"]').val());
-            const onsiteOption = $('#onsite-payment-option');
-
-            if (duration >= 4) {
-                onsiteOption.hide();
-                form.find('input[name="payment_method"][value="paypal"]').prop('checked', true);
-            } else {
-                onsiteOption.show();
-            }
+            $('#onsite-payment-option').show();
         }
 
         // Apply payment method restriction on page load
@@ -3991,14 +3985,8 @@ $label_no_slots_message = $settings->get_label('hrb_label_no_slots_message');
                 updateBookingSummary();
             } else {
                 paypalOption.show();
-                // Re-apply standard duration-based restriction
-                const duration = parseInt(form.find('select[name=\"duration\"]').val());
-                if (duration >= 4) {
-                    onsiteOption.hide();
-                    form.find('input[name=\"payment_method\"][value=\"paypal\"]').prop('checked', true).trigger('change');
-                } else {
-                    onsiteOption.show();
-                }
+                // Both methods come back: no duration rules one of them out.
+                onsiteOption.show();
                 updateBookingSummary();
             }
         }

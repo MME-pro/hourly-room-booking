@@ -15,6 +15,12 @@ msgstr ""
 msgid "Cancellation Fee"
 msgstr "Stornogebühr"
 
+msgid "You can pay either via PayPal or on site, whatever the length of your booking."
+msgstr "Sie können unabhängig von der Dauer Ihrer Buchung wahlweise per PayPal oder vor Ort bezahlen."
+
+msgid "For bookings of 4 hours or more, please note that no refunds are possible."
+msgstr "Bitte beachten Sie: Bei Buchungen ab 4 Stunden ist keine Rückerstattung möglich."
+
 msgid "Anonymous booking"
 msgstr "Anonyme Buchung"
 
