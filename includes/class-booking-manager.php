@@ -1059,7 +1059,7 @@ class HRB_Booking_Manager {
         if (isset($data['status'])
             && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW === $data['status']
             && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $booking->status) {
-            $this->notify_no_show([$booking_id], 'manual');
+            $this->notify_no_show([$booking_id], 'manual', $booking->status);
         }
 
         // Send notification if booking was modified and notifications are enabled (but not for new bookings)
@@ -1105,6 +1105,15 @@ class HRB_Booking_Manager {
                 }
             }
             
+            // A booking marked no-show is not news for the customer: they did
+            // not turn up, and "your booking has been modified" is the wrong
+            // thing to send them. The desk is told instead, by the status
+            // change mail above.
+            if (isset($data['status'])
+                && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW === $data['status']) {
+                $has_changes = false;
+            }
+
             if ($has_changes) {
                 // Cancelling from the edit form is a status change like any
                 // other as far as this block is concerned, which is how a
@@ -2228,7 +2237,7 @@ class HRB_Booking_Manager {
                 }
 
                 if (HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $was) {
-                    $this->notify_no_show([$booking_id], 'manual');
+                    $this->notify_no_show([$booking_id], 'manual', $was);
                 }
             }
 
@@ -2460,16 +2469,17 @@ class HRB_Booking_Manager {
      * settled correctly whether or not the mail server is reachable.
      *
      * @since 1.21.0
-     * @param int[]  $ids     Bookings that are now no-shows
-     * @param string $trigger 'automatic' or 'manual'
+     * @param int[]  $ids         Bookings that are now no-shows
+     * @param string $trigger     'automatic' or 'manual'
+     * @param string $from_status Status the booking held before the change
      * @return void
      */
-    private function notify_no_show(array $ids, $trigger) {
+    private function notify_no_show(array $ids, $trigger, $from_status = '') {
         if (empty($ids) || !class_exists('HRB_Daily_Summary')) {
             return;
         }
 
-        HRB_Daily_Summary::getInstance()->send_no_show_summary($ids, $trigger);
+        HRB_Daily_Summary::getInstance()->send_no_show_summary($ids, $trigger, $from_status);
     }
 
     /**

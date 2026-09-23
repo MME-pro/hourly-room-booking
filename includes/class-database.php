@@ -1858,7 +1858,7 @@ class HRB_Database {
 
         // Bump this when a template is *added* to the bundle. Missing templates
         // are inserted; existing ones are left exactly as the team edited them.
-        $bundle_version = '2026-09-23-no-show-summary-template';
+        $bundle_version = '2026-09-23-no-show-status-change-template';
 
         // Bump this when a *single* template's own content changes. Only the
         // keys listed are rewritten, so a design version bump - which throws

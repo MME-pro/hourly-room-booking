@@ -330,6 +330,17 @@ class HRB_Daily_Summary {
     const NO_SHOW_TEMPLATE_KEY = 'no_show_summary_admin';
 
     /**
+     * Key of the template a hand-made status change is rendered from
+     *
+     * Its own template on purpose. The end-of-day summary reports a day's
+     * worth of no-shows and what they were worth; this one reports a single
+     * change - which booking, what it was, what it is now - and nothing else.
+     *
+     * @since 1.23.0
+     */
+    const NO_SHOW_CHANGE_TEMPLATE_KEY = 'no_show_status_change_admin';
+
+    /**
      * Tell the summary's recipients that bookings became no-shows
      *
      * Two things reach this, and they are the same news either way. The
@@ -350,9 +361,10 @@ class HRB_Daily_Summary {
      * @since 1.21.0
      * @param int[]  $booking_ids Bookings that just became no-shows
      * @param string $trigger     'automatic' (end-of-day pass) or 'manual'
+     * @param string $from_status Status the booking held before the change
      * @return int Number of addresses the mail was accepted for
      */
-    public function send_no_show_summary(array $booking_ids, $trigger = 'automatic') {
+    public function send_no_show_summary(array $booking_ids, $trigger = 'automatic', $from_status = '') {
         static $already_sent = [];
 
         $ids = [];
@@ -398,9 +410,21 @@ class HRB_Daily_Summary {
             $already_sent[$id] = true;
         }
 
-        $template = $this->get_template(self::NO_SHOW_TEMPLATE_KEY);
-        $subject  = wp_strip_all_tags($this->fill_no_show_template($template['subject'], $bookings, $trigger));
-        $message  = $this->fill_no_show_template($template['html_content'], $bookings, $trigger);
+        // Two different pieces of news, two different templates. The pass
+        // reports a day's no-shows and what they were worth; a change made at
+        // the desk reports that one booking moved from one status to another.
+        $manual = ('manual' === $trigger);
+        $key    = $manual ? self::NO_SHOW_CHANGE_TEMPLATE_KEY : self::NO_SHOW_TEMPLATE_KEY;
+
+        $template = $this->get_template($key);
+
+        if ($manual) {
+            $subject = wp_strip_all_tags($this->fill_status_change_template($template['subject'], $bookings[0], $from_status));
+            $message = $this->fill_status_change_template($template['html_content'], $bookings[0], $from_status);
+        } else {
+            $subject = wp_strip_all_tags($this->fill_no_show_template($template['subject'], $bookings, $trigger));
+            $message = $this->fill_no_show_template($template['html_content'], $bookings, $trigger);
+        }
         $headers  = [
             'Content-Type: text/html; charset=UTF-8',
             'From: ' . get_option('hrb_company_name', get_bloginfo('name'))
@@ -453,6 +477,64 @@ class HRB_Daily_Summary {
              ORDER BY b.booking_date ASC, b.start_time ASC",
             HRB_Status_Constants::BOOKING_STATUS_NO_SHOW
         ));
+    }
+
+    /**
+     * Replace the placeholders in the status-change template
+     *
+     * Deliberately narrow: which booking, what it was, what it is now. No
+     * figures and no list - the mail exists to say a status moved, and the
+     * summary is where a day's worth of them is added up.
+     *
+     * @since 1.23.0
+     * @param string $content     Template with {placeholders}
+     * @param object $booking     Row from collect_no_shows()
+     * @param string $from_status Status the booking held before the change
+     * @return string
+     */
+    private function fill_status_change_template($content, $booking, $from_status) {
+        $company_name = get_option('hrb_company_name', get_bloginfo('name'));
+        $company_logo = get_option('hrb_company_logo', '');
+
+        $logo_html = '';
+        if ($company_logo) {
+            $logo_html = '<img src="' . esc_url($company_logo) . '" alt="' . esc_attr($company_name) . '">';
+        }
+
+        $replacements = [
+            '{booking_reference}'  => esc_html($booking->booking_reference),
+            '{booking_id}'         => (string) (int) $booking->id,
+            '{old_status}'         => esc_html(self::status_label($from_status)),
+            '{new_status}'         => esc_html(self::status_label(HRB_Status_Constants::BOOKING_STATUS_NO_SHOW)),
+            '{company_logo_html}'  => $logo_html,
+            '{company_logo}'       => esc_url($company_logo),
+            '{company_name}'       => esc_html($company_name),
+            '{company_phone}'      => esc_html(get_option('hrb_company_phone', '')),
+            '{company_email}'      => esc_html(get_option('hrb_company_email', get_option('admin_email'))),
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $content);
+    }
+
+    /**
+     * The name a booking status goes by on screen
+     *
+     * @since 1.23.0
+     * @param string $status Status slug
+     * @return string
+     */
+    public static function status_label($status) {
+        $labels = [
+            'pending'   => __('Pending', 'hourly-room-booking'),
+            'confirmed' => __('Confirmed', 'hourly-room-booking'),
+            'completed' => __('Completed', 'hourly-room-booking'),
+            'cancelled' => __('Cancelled', 'hourly-room-booking'),
+            'no_show'   => __('No Show', 'hourly-room-booking'),
+        ];
+
+        $key = strtolower(trim((string) $status));
+
+        return isset($labels[$key]) ? $labels[$key] : ($key === '' ? __('Unknown', 'hourly-room-booking') : $key);
     }
 
     /**

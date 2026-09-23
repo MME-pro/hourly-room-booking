@@ -15,6 +15,9 @@ msgstr ""
 msgid "Cancellation Fee"
 msgstr "Stornogebühr"
 
+msgid "Unknown"
+msgstr "Unbekannt"
+
 msgid "You can pay either via PayPal or on site, whatever the length of your booking."
 msgstr "Sie können unabhängig von der Dauer Ihrer Buchung wahlweise per PayPal oder vor Ort bezahlen."
 

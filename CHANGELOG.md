@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-09-23
+
+### Added
+- **A hand-made no-show gets its own mail, not the day's summary.** Both cases used the same template in 1.21.0, which meant marking one booking at the desk produced a summary-shaped mail with a count of one and a total value. They are different pieces of news, so they are now different templates: `no_show_summary_admin` still reports the day's no-shows and what they were worth, and the new `no_show_status_change_admin` reports one booking and one fact — its reference, the status it held, and the status it holds now.
+
+### Changed
+- **The customer is no longer told their booking was "modified" when it is marked No Show.** Marking a booking no-show from the edit form counted as a booking change like any other, so the customer who never turned up received an email saying their booking had been updated. They do not need to hear it — the desk does, and the status-change mail above is what says so. Every other status change still notifies the customer exactly as before.
+
+### Database
+- The email template bundle version is bumped, so existing sites are seeded with the status-change template on the next admin load. Templates the team has already edited are left untouched.
+
 ## [1.22.0] - 2026-09-23
 
 ### Changed
