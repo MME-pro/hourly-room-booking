@@ -5,6 +5,17 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-09-23
+
+### Added
+- **The status-change mail now says who marked the booking.** A line reading *Changed by* names the logged-in user beside the booking reference and the two statuses, so a no-show marked at the desk can be traced to the person who marked it. The mail goes out in the same request as the change, which is why the user is read there rather than carried down from the caller. A change made with nobody logged in — cron, WP-CLI — reads as **System** rather than leaving the line blank.
+
+### Changed
+- The per-template resync list now names only the template this release rewrites. It was accumulating keys from earlier releases, which meant every later bump rewrote those templates again and threw away whatever the team had edited on the site. The test that pinned one of those keys now checks that the mechanism is wired rather than that one historical key is still listed — that template's resync shipped in 1.16.0 and is recorded on every site that has run since.
+
+### Database
+- The per-template email version is bumped, so existing sites pick up the rewritten status-change template on the next admin load. No other template is touched.
+
 ## [1.24.0] - 2026-09-23
 
 ### Changed

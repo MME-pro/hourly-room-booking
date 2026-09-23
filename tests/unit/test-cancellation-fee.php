@@ -246,9 +246,18 @@ check(
     true
 );
 
+// The resync list names whichever templates the *current* bump rewrites, and
+// is replaced each time rather than added to - otherwise every later bump
+// would rewrite these three again and throw away whatever the team had edited
+// on the site. So this no longer looks for this template's own key: its resync
+// shipped in 1.16.0 and is recorded on every site that has run since. What
+// still has to hold is that the mechanism is wired at all, and that the
+// bundled copy carries no fee block - both checked above and here.
+preg_match("/template_keys\s*=\s*array\(([^)]*)\)/", $database, $keys_match);
+
 check(
-    'and the plain template is on the resync list so its fee block goes away',
-    (bool) preg_match("/template_keys\s*=\s*array\([^)]*'booking_cancelled_user'/", $database),
+    'the per-template resync list is wired and names at least one template',
+    isset($keys_match[1]) && preg_match("/'[a-z0-9_]+'/", $keys_match[1]) === 1,
     true
 );
 

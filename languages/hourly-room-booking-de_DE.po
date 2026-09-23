@@ -15,6 +15,9 @@ msgstr ""
 msgid "Cancellation Fee"
 msgstr "Stornogebühr"
 
+msgid "System"
+msgstr "System"
+
 msgid "Unknown"
 msgstr "Unbekannt"
 

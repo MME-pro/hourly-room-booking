@@ -506,6 +506,7 @@ class HRB_Daily_Summary {
             '{booking_id}'         => (string) (int) $booking->id,
             '{old_status}'         => esc_html(self::status_label($from_status)),
             '{new_status}'         => esc_html(self::status_label(HRB_Status_Constants::BOOKING_STATUS_NO_SHOW)),
+            '{changed_by}'         => esc_html(self::actor_label()),
             '{company_logo_html}'  => $logo_html,
             '{company_logo}'       => esc_url($company_logo),
             '{company_name}'       => esc_html($company_name),
@@ -514,6 +515,37 @@ class HRB_Daily_Summary {
         ];
 
         return str_replace(array_keys($replacements), array_values($replacements), $content);
+    }
+
+    /**
+     * Who made the change
+     *
+     * The mail goes out in the same request as the status change, so the
+     * logged-in user is the person who made it. Read here rather than carried
+     * down from the caller for that reason - there is only ever one request
+     * between the click and the mail.
+     *
+     * A change with nobody logged in is the clock rather than a person: cron
+     * and WP-CLI both run without a user. That case says so instead of
+     * leaving the line blank.
+     *
+     * @since 1.25.0
+     * @return string
+     */
+    public static function actor_label() {
+        if (!function_exists('wp_get_current_user')) {
+            return __('System', 'hourly-room-booking');
+        }
+
+        $user = wp_get_current_user();
+
+        if (!$user || empty($user->ID)) {
+            return __('System', 'hourly-room-booking');
+        }
+
+        $name = trim((string) $user->display_name);
+
+        return $name !== '' ? $name : (string) $user->user_login;
     }
 
     /**

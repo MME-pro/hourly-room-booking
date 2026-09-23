@@ -571,6 +571,49 @@ check('so is a booking reference', strpos($injected, '<img src=x') === false, tr
 check('and a room name', strpos($injected, '"><b>bold</b>') === false, true);
 check_contains('...all shown escaped instead', $injected, '&lt;script&gt;');
 
+// ---------------------------------------------------------------------------
+// Who made the change
+//
+// The status-change mail names the person who marked the booking. The mail is
+// sent in the same request as the change, so the logged-in user is that
+// person - and a change with nobody logged in is the clock, not a person.
+// ---------------------------------------------------------------------------
+
+echo "\n-- who the status-change mail credits --\n";
+
+$GLOBALS['fake_current_user'] = null;
+
+function wp_get_current_user() {
+    return $GLOBALS['fake_current_user'];
+}
+
+check(
+    'no user logged in reads as the system, not an empty line',
+    HRB_Daily_Summary::actor_label(),
+    'System'
+);
+
+$GLOBALS['fake_current_user'] = (object) ['ID' => 0, 'display_name' => 'Nobody', 'user_login' => 'nobody'];
+check(
+    'and so does a user object with no id',
+    HRB_Daily_Summary::actor_label(),
+    'System'
+);
+
+$GLOBALS['fake_current_user'] = (object) ['ID' => 7, 'display_name' => 'Desk Employee', 'user_login' => 'desk'];
+check(
+    'a logged-in user is credited by display name',
+    HRB_Daily_Summary::actor_label(),
+    'Desk Employee'
+);
+
+$GLOBALS['fake_current_user'] = (object) ['ID' => 7, 'display_name' => '   ', 'user_login' => 'desk'];
+check(
+    'falling back to the login when the display name is blank',
+    HRB_Daily_Summary::actor_label(),
+    'desk'
+);
+
 echo "\n" . (0 === $failures ? "ALL PASSED\n" : "{$failures} FAILURE(S)\n");
 
 exit(0 === $failures ? 0 : 1);
