@@ -5,6 +5,13 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-09-23
+
+### Changed
+- **A booking's payments are now found by the booking, not by one transaction id.** The booking details screen used to print the transaction id carried on the booking row and link to a Payments search for that string. A booking can have several payment rows — a deposit, a remainder, a cancellation fee — and only one of them is that id, so the other rows were unreachable from the booking they belong to. The label, the id and the *View Payment* link are replaced by a single **View Transaction** button that opens Payments filtered on `booking_id`, which lists all of them. The filter is kept across the screen's own filter form, so narrowing by status or method stays inside that booking.
+- **A cancelled booking now states what is actually owed.** It used to be presented as a bill for the room: Amount `85.00 €`, and a breakdown of base price and extras totalling the same, with the cancellation fee added underneath as an afterthought. Nobody owes that — the room is not being provided. The breakdown now reads Booked Service, Cancellation Deduction (the same figure taken straight back off), Cancellation Fee, and **Total Amount Due**, and the Amount in Payment Information is the fee alone. The payment method on a cancelled booking reads Bank Transfer, which is how the fee is settled.
+- Both changes are display only. No booking, payment or amount is written differently, and a booking that is not cancelled shows exactly what it showed before.
+
 ## [1.19.1] - 2026-09-23
 
 ### Changed

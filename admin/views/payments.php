@@ -62,6 +62,7 @@ $filters = [
     'date_from' => sanitize_text_field($_GET['date_from'] ?? ''),
     'date_to' => sanitize_text_field($_GET['date_to'] ?? ''),
     'search' => sanitize_text_field($_GET['s'] ?? ''),
+    'booking_id' => intval($_GET['booking_id'] ?? 0),
 ];
 
 $per_page = 20;
@@ -141,6 +142,9 @@ $currency_symbol = hrb_get_currency_symbol();
     <div class="hrb-filters">
         <form method="get" class="hrb-filter-form">
             <input type="hidden" name="page" value="hrb-payments">
+            <?php if (!empty($filters['booking_id'])): ?>
+            <input type="hidden" name="booking_id" value="<?php echo esc_attr($filters['booking_id']); ?>">
+            <?php endif; ?>
 
             <div class="hrb-filter-group">
                 <label for="filter-status"><?php _e('Status:', 'hourly-room-booking'); ?></label>

@@ -315,15 +315,15 @@ function hrb_get_sortable_header($label, $orderby, $current_orderby, $current_or
                             <th><?php _e('Payment Method', 'hourly-room-booking'); ?></th>
                             <td><?php echo esc_html(hrb_get_payment_method_label($booking->payment_method ?? 'N/A')); ?></td>
                         </tr>
-                        <?php if ($booking->transaction_id): ?>
-                            <tr>
-                                <th><?php _e('Transaction ID', 'hourly-room-booking'); ?></th>
-                                <td>
-                                    <?php echo esc_html($booking->transaction_id); ?>
-                                    <a href="<?php echo admin_url('admin.php?page=hrb-payments&s=' . urlencode($booking->transaction_id)); ?>" class="button button-small"><?php _e('View Payment', 'hourly-room-booking'); ?></a>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
+                        <?php // Every payment of this booking, found by the booking itself:
+                              // a booking can have a deposit, a remainder and a
+                              // cancellation fee, and only one of them is the
+                              // transaction id carried on the booking row. ?>
+                        <tr>
+                            <td colspan="2">
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=hrb-payments&booking_id=' . $booking->id)); ?>" class="button button-small"><?php _e('View Transaction', 'hourly-room-booking'); ?></a>
+                            </td>
+                        </tr>
                         <tr>
                             <th><?php _e('Created', 'hourly-room-booking'); ?></th>
                             <td><?php echo esc_html(date_i18n(get_option('hrb_date_format', 'd.m.Y') . ' ' . get_option('hrb_time_format', 'H:i'), strtotime($booking->created_at))); ?></td>

@@ -1675,13 +1675,20 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                     </table>
                 </div>
 
+                <?php
+                // A cancelled booking is not a bill for the room any more. What is
+                // still owed is the cancellation fee alone, so the amount, the
+                // method and the breakdown below all speak about that instead.
+                $hrb_cancelled_view = ($booking->status === 'cancelled');
+                $hrb_cancellation_fee = (float) ($booking->cancellation_fee ?? 0);
+                ?>
                 <div class="hrb-details-section">
                     <h3><?php _e('Payment Information', 'hourly-room-booking'); ?></h3>
                     <table class="widefat">
                         <?php if (hrb_can_view_booking_amounts()): ?>
                         <tr>
                             <th><?php _e('Amount', 'hourly-room-booking'); ?></th>
-                            <td><?php echo hrb_format_amount($booking->total_amount); ?></td>
+                            <td><?php echo hrb_format_amount($hrb_cancelled_view ? $hrb_cancellation_fee : $booking->total_amount); ?></td>
                         </tr>
                         <?php endif; ?>
                         <tr>
@@ -1709,7 +1716,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         </tr>
                         <tr>
                             <th><?php _e('Payment Method', 'hourly-room-booking'); ?></th>
-                            <td><?php echo esc_html(hrb_get_payment_method_label($booking->payment_method ?? 'N/A')); ?></td>
+                            <td><?php echo esc_html(hrb_get_payment_method_label($hrb_cancelled_view ? 'bank_transfer' : ($booking->payment_method ?? 'N/A'))); ?></td>
                         </tr>
                         <?php // The desk's own note, not a payment method. Admin screens only. ?>
                         <?php if (!empty($booking->paid_by_bank_transfer)): ?>
@@ -1721,15 +1728,15 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                             </td>
                         </tr>
                         <?php endif; ?>
-                        <?php if ($booking->transaction_id): ?>
-                            <tr>
-                                <th><?php _e('Transaction ID', 'hourly-room-booking'); ?></th>
-                                <td>
-                                    <?php echo esc_html($booking->transaction_id); ?>
-                                    <a href="<?php echo admin_url('admin.php?page=hrb-payments&s=' . urlencode($booking->transaction_id)); ?>" class="button button-small"><?php _e('View Payment', 'hourly-room-booking'); ?></a>
-                                </td>
-                            </tr>
-                        <?php endif; ?>
+                        <?php // Every payment of this booking, found by the booking itself:
+                              // a booking can have a deposit, a remainder and a
+                              // cancellation fee, and only one of them is the
+                              // transaction id carried on the booking row. ?>
+                        <tr>
+                            <td colspan="2">
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=hrb-payments&booking_id=' . $booking->id)); ?>" class="button button-small"><?php _e('View Transaction', 'hourly-room-booking'); ?></a>
+                            </td>
+                        </tr>
                         <tr>
                             <th><?php _e('Created', 'hourly-room-booking'); ?></th>
                             <td><?php echo esc_html(date_i18n(get_option('hrb_date_format', 'd.m.Y') . ' ' . get_option('hrb_time_format', 'H:i'), strtotime($booking->created_at))); ?></td>
@@ -1740,6 +1747,46 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                 <?php if (hrb_can_view_booking_amounts()): ?>
                 <div class="hrb-details-section">
                     <h3><?php _e('Pricing Breakdown', 'hourly-room-booking'); ?></h3>
+                        <?php 
+                        // Get PayPal fees from payment records (more accurate for partial payments)
+                        $payment_handler_view = HRB_Payment_Handler::getInstance();
+                        $all_payments_view = $payment_handler_view->get_booking_payments($booking->id);
+                        $total_paypal_fees = 0;
+                        foreach ($all_payments_view as $payment_view) {
+                            if (isset($payment_view->fees) && $payment_view->fees > 0) {
+                                $total_paypal_fees += floatval($payment_view->fees);
+                            }
+                        }
+                        
+                        // Fallback to booking table if no fees in payment records
+                        if ($total_paypal_fees == 0 && $booking->paypal_fee > 0) {
+                            $total_paypal_fees = $booking->paypal_fee;
+                        }
+                        ?>
+                    <?php if ($hrb_cancelled_view): ?>
+                    <?php // Cancelled: the room was booked and then credited back in
+                          // full, and what is left to settle is the fee. Shown as
+                          // the three lines that add up to it rather than as a total
+                          // for a room nobody is getting. ?>
+                    <table class="widefat">
+                        <tr>
+                            <th><?php _e('Booked Service', 'hourly-room-booking'); ?></th>
+                            <td><?php echo hrb_format_amount($booking->total_amount); ?></td>
+                        </tr>
+                        <tr>
+                            <th><?php _e('Cancellation Deduction', 'hourly-room-booking'); ?></th>
+                            <td>-<?php echo hrb_format_amount($booking->total_amount); ?></td>
+                        </tr>
+                        <tr>
+                            <th style="color:#b32d2e;"><?php _e('Cancellation Fee', 'hourly-room-booking'); ?></th>
+                            <td style="color:#b32d2e;"><?php echo hrb_format_amount($hrb_cancellation_fee); ?></td>
+                        </tr>
+                        <tr style="border-top: 2px solid #333; font-weight: bold; font-size: 1.1em;">
+                            <th><?php _e('Total Amount Due', 'hourly-room-booking'); ?> <span style="font-weight:normal;">(<?php _e('payable on-site', 'hourly-room-booking'); ?>)</span></th>
+                            <td><strong><?php echo hrb_format_amount($hrb_cancellation_fee); ?></strong></td>
+                        </tr>
+                    </table>
+                    <?php else: ?>
                     <table class="widefat">
                         <tr>
                             <th><?php _e('Base Price', 'hourly-room-booking'); ?></th>
@@ -1772,23 +1819,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         </tr>
                         <?php endif; ?>
                         
-                        <?php 
-                        // Get PayPal fees from payment records (more accurate for partial payments)
-                        $payment_handler_view = HRB_Payment_Handler::getInstance();
-                        $all_payments_view = $payment_handler_view->get_booking_payments($booking->id);
-                        $total_paypal_fees = 0;
-                        foreach ($all_payments_view as $payment_view) {
-                            if (isset($payment_view->fees) && $payment_view->fees > 0) {
-                                $total_paypal_fees += floatval($payment_view->fees);
-                            }
-                        }
-                        
-                        // Fallback to booking table if no fees in payment records
-                        if ($total_paypal_fees == 0 && $booking->paypal_fee > 0) {
-                            $total_paypal_fees = $booking->paypal_fee;
-                        }
-                        
-                        if ($total_paypal_fees > 0): ?>
+                        <?php if ($total_paypal_fees > 0): ?>
                         <tr>
                             <th><?php _e('PayPal Fee', 'hourly-room-booking'); ?></th>
                             <td><?php echo hrb_format_amount($total_paypal_fees); ?></td>
@@ -1812,6 +1843,7 @@ function hrb_track_booking_modifications($booking_manager, $booking_id, $origina
                         </tr>
                         <?php endif; ?>
                     </table>
+                    <?php endif; ?>
                 </div>
                 <?php endif; ?>
 

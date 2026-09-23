@@ -243,6 +243,14 @@ class HRB_Payment_Manager {
             $where_values[] = $filters['date_to'];
         }
 
+        // Every payment of one booking, which is what the booking details screen
+        // links to: a booking can have several rows - a deposit, a remainder, a
+        // cancellation fee - and they all belong to that one booking.
+        if (!empty($filters['booking_id'])) {
+            $where_conditions[] = 'p.booking_id = %d';
+            $where_values[] = (int) $filters['booking_id'];
+        }
+
         // Search filter
         if (!empty($filters['search'])) {
             $where_conditions[] = '(p.transaction_id LIKE %s OR p.gateway_transaction_id LIKE %s OR CONCAT(c.first_name, " ", c.last_name) LIKE %s OR c.email LIKE %s)';

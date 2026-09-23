@@ -15,6 +15,18 @@ msgstr ""
 msgid "Cancellation Fee"
 msgstr "Stornogebühr"
 
+msgid "View Transaction"
+msgstr "Transaktion anzeigen"
+
+msgid "Booked Service"
+msgstr "Gebuchte Leistung"
+
+msgid "Cancellation Deduction"
+msgstr "Stornoabzug"
+
+msgid "Total Amount Due"
+msgstr "Gesamtbetrag fällig"
+
 msgid "Cancellation Fee · %s"
 msgstr "Stornogebühr · %s"
 
