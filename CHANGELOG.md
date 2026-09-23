@@ -5,6 +5,12 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.1] - 2026-09-23
+
+### Changed
+- **Two revenue headers that 1.18.0 missed are now Super Admin only.** The Dashboard's *This Month Revenue* card and the *Total Revenue* card on Reports & Analytics were still gated on `hrb_view_financials`, which a Room Booking Admin holds. So on a client site the client went on seeing the one figure the stats capability was introduced to keep back, while the Payments screen already withheld it — the rule existed, two screens simply had not been moved onto it. Both cards now ask `hrb_can_view_stats()`, the same question Payments asks.
+- Nothing else changes hands. An Admin keeps every figure they actually work with: a booking's price, the payment records, the Revenue Analysis chart and the room-by-room revenue table further down the Reports screen. What is withheld is only the headline summary sitting above the screen — our read on how the installation is doing, not the client's books.
+
 ## [1.19.0] - 2026-09-22
 
 ### Changed

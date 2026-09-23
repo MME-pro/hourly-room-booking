@@ -345,6 +345,11 @@ $currency_symbol = hrb_get_currency_symbol();
                 </div>
             </div>
 
+            <!-- Total Revenue. Super Admin only, like the other stats headers:
+                 the headline read on what the installation took over the period,
+                 not a figure the client works with. An Admin keeps the rest of
+                 the Reports screen. -->
+            <?php if (hrb_can_view_stats()): ?>
             <div class="hrb-stat-card">
                 <div class="hrb-stat-icon">
                     <span class="dashicons dashicons-money-alt"></span>
@@ -357,6 +362,7 @@ $currency_symbol = hrb_get_currency_symbol();
                     </div> -->
                 </div>
             </div>
+            <?php endif; ?>
 
             <div class="hrb-stat-card">
                 <div class="hrb-stat-icon">

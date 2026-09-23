@@ -47,8 +47,11 @@ $month_end = date('Y-m-t');
                 </div>
             </div>
 
-            <!-- This Month's Revenue. A figure, so an Employee never sees it. -->
-            <?php if (hrb_can_view_financials()): ?>
+            <!-- This Month's Revenue. A stats header: what the month took across
+                 the installation, rather than what one booking costs. Super Admin
+                 only - an Admin runs the business and still sees every figure they
+                 work with, just not our headline read on it. -->
+            <?php if (hrb_can_view_stats()): ?>
             <div class="hrb-stat-card hrb-stat-revenue">
                 <div class="hrb-stat-icon">
                     <i class="bi bi-graph-up-arrow"></i>
