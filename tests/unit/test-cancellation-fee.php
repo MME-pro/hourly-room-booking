@@ -235,9 +235,14 @@ check('and no bank details', strpos($plain, 'bank_iban') !== false, false);
 // version changes; rewriting one needs the per-template version bumped.
 $database = file_get_contents(HRB_PLUGIN_DIR . 'includes/class-database.php');
 
+// The version is date-prefixed and bumped again whenever a later template is
+// added, so what matters is that it is no older than the day this template
+// joined the bundle - not that it still carries that day's exact label.
+preg_match("/bundle_version = '([^']+)'/", $database, $bundle_match);
+
 check(
-    'the bundle version was bumped so the new template is seeded',
-    (bool) preg_match("/bundle_version = '2026-09-08-cancellation-fee-template'/", $database),
+    'the bundle version is at or past the one that seeds this template',
+    isset($bundle_match[1]) && substr($bundle_match[1], 0, 10) >= '2026-09-08',
     true
 );
 

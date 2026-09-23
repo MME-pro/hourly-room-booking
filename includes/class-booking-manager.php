@@ -1052,6 +1052,17 @@ class HRB_Booking_Manager {
             $this->maybe_apply_cancellation_fee($booking_id);
         }
 
+        // The edit form is the other way a booking becomes a no-show by hand,
+        // and it is the one the admin screens actually use. $booking still
+        // holds the status from before this update, so the notice only goes
+        // out on the transition rather than on every save of a booking that
+        // was already a no-show.
+        if (isset($data['status'])
+            && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW === $data['status']
+            && HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $booking->status) {
+            $this->notify_no_show([$booking_id], 'manual');
+        }
+
         // Send notification if booking was modified and notifications are enabled (but not for new bookings)
         if ($send_notification && !$is_new_booking) {
             // Check if any significant booking data changed (not just status)
@@ -2160,6 +2171,11 @@ class HRB_Booking_Manager {
             return false;
         }
 
+        // Read before writing: whether this is news depends on what the
+        // booking held a moment ago, and afterwards it holds the new status.
+        $previous = $this->get_booking($booking_id);
+        $was      = $previous ? strtolower(trim((string) $previous->status)) : '';
+
         $result = $wpdb->update(
             $wpdb->prefix . 'hrb_bookings',
             ['status' => $status, 'updated_at' => current_time('mysql')],
@@ -2210,6 +2226,10 @@ class HRB_Booking_Manager {
                     );
 
                     $this->void_uncollected_payments([$booking_id]);
+                }
+
+                if (HRB_Status_Constants::BOOKING_STATUS_NO_SHOW !== $was) {
+                    $this->notify_no_show([$booking_id], 'manual');
                 }
             }
 
@@ -2423,7 +2443,34 @@ class HRB_Booking_Manager {
 
         $this->void_uncollected_payments($ids);
 
+        $this->notify_no_show($ids, 'automatic');
+
         return count($ids);
+    }
+
+    /**
+     * Tell the daily summary's recipients about bookings that became no-shows
+     *
+     * The end-of-day pass calls this with everything it just marked, so the
+     * team gets one mail for the day rather than one per booking. A status
+     * changed by hand calls it with the single booking. Either way the mail
+     * goes to whoever receives the daily summary, which is where this kind of
+     * news already belongs.
+     *
+     * Failure to send is not allowed to undo the marking: the bookings are
+     * settled correctly whether or not the mail server is reachable.
+     *
+     * @since 1.21.0
+     * @param int[]  $ids     Bookings that are now no-shows
+     * @param string $trigger 'automatic' or 'manual'
+     * @return void
+     */
+    private function notify_no_show(array $ids, $trigger) {
+        if (empty($ids) || !class_exists('HRB_Daily_Summary')) {
+            return;
+        }
+
+        HRB_Daily_Summary::getInstance()->send_no_show_summary($ids, $trigger);
     }
 
     /**

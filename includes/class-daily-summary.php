@@ -318,6 +318,222 @@ class HRB_Daily_Summary {
         return $sent;
     }
 
+    // -----------------------------------------------------------------
+    // No-shows
+    // -----------------------------------------------------------------
+
+    /**
+     * Key of the branded email template the no-show notice is rendered from
+     *
+     * @since 1.21.0
+     */
+    const NO_SHOW_TEMPLATE_KEY = 'no_show_summary_admin';
+
+    /**
+     * Tell the summary's recipients that bookings became no-shows
+     *
+     * Two things reach this, and they are the same news either way. The
+     * end-of-day pass turns every past unpaid booking into a no-show at once,
+     * and sends one mail listing all of them. Someone at the desk marking a
+     * booking by hand sends the same mail for that one booking. Whoever reads
+     * the daily summary is the person who wants to know either happened, so
+     * the audience is the summary's own list.
+     *
+     * Deliberately not tied to hrb_daily_summary_enabled: that switch governs
+     * a scheduled report of a day's figures, and this is a notice about
+     * bookings that will never be paid. Silence it with the
+     * hrb_no_show_summary_recipients filter, which can return an empty array.
+     *
+     * A booking is never reported twice in one request, so a status change
+     * that travels through more than one path cannot send two mails.
+     *
+     * @since 1.21.0
+     * @param int[]  $booking_ids Bookings that just became no-shows
+     * @param string $trigger     'automatic' (end-of-day pass) or 'manual'
+     * @return int Number of addresses the mail was accepted for
+     */
+    public function send_no_show_summary(array $booking_ids, $trigger = 'automatic') {
+        static $already_sent = [];
+
+        $ids = [];
+        foreach ($booking_ids as $id) {
+            $id = (int) $id;
+            if ($id > 0 && !isset($already_sent[$id])) {
+                $ids[$id] = $id;
+            }
+        }
+
+        if (empty($ids)) {
+            return 0;
+        }
+
+        $bookings = $this->collect_no_shows($ids);
+        if (empty($bookings)) {
+            return 0;
+        }
+
+        /**
+         * Filter the addresses that receive the no-show notice.
+         *
+         * Defaults to the daily summary's own recipients. Return an empty
+         * array to switch the notice off.
+         *
+         * @since 1.21.0
+         * @param array  $recipients
+         * @param int[]  $booking_ids
+         * @param string $trigger
+         */
+        $recipients = apply_filters(
+            'hrb_no_show_summary_recipients',
+            $this->get_recipients(),
+            array_values($ids),
+            $trigger
+        );
+
+        if (empty($recipients)) {
+            return 0;
+        }
+
+        foreach ($ids as $id) {
+            $already_sent[$id] = true;
+        }
+
+        $template = $this->get_template(self::NO_SHOW_TEMPLATE_KEY);
+        $subject  = wp_strip_all_tags($this->fill_no_show_template($template['subject'], $bookings, $trigger));
+        $message  = $this->fill_no_show_template($template['html_content'], $bookings, $trigger);
+        $headers  = [
+            'Content-Type: text/html; charset=UTF-8',
+            'From: ' . get_option('hrb_company_name', get_bloginfo('name'))
+                . ' <' . get_option('hrb_company_email', get_option('admin_email')) . '>',
+        ];
+
+        // One mail per address, for the same reason run() sends one each: a
+        // single bad recipient must not suppress the notice for everyone.
+        $sent = 0;
+        foreach ($recipients as $recipient) {
+            if (wp_mail($recipient, $subject, $message, $headers)) {
+                $sent++;
+            }
+        }
+
+        return $sent;
+    }
+
+    /**
+     * The bookings behind a no-show notice
+     *
+     * Read back after they were marked, so the mail reports what the database
+     * actually holds rather than what the caller believed it was writing. A
+     * booking that has since moved off no-show is dropped.
+     *
+     * @since 1.21.0
+     * @param int[] $ids Booking ids
+     * @return array Rows
+     */
+    private function collect_no_shows(array $ids) {
+        global $wpdb;
+
+        $in = implode(',', array_map('intval', $ids));
+        if ($in === '') {
+            return [];
+        }
+
+        return (array) $wpdb->get_results($wpdb->prepare(
+            "SELECT b.id, b.booking_reference, b.booking_date, b.start_time, b.end_time,
+                    b.total_amount, b.payment_method, b.is_anonymous,
+                    r.name AS room_name,
+                    CASE WHEN b.first_name IS NOT NULL AND b.first_name != ''
+                         THEN TRIM(CONCAT(b.first_name, ' ', COALESCE(b.last_name, '')))
+                         ELSE TRIM(CONCAT(COALESCE(c.first_name, ''), ' ', COALESCE(c.last_name, ''))) END AS customer_name,
+                    c.email AS customer_email, c.phone AS customer_phone
+             FROM {$wpdb->prefix}hrb_bookings b
+             LEFT JOIN {$wpdb->prefix}hrb_rooms r ON b.room_id = r.id
+             LEFT JOIN {$wpdb->prefix}hrb_customers c ON b.customer_id = c.id
+             WHERE b.id IN ({$in}) AND b.status = %s
+             ORDER BY b.booking_date ASC, b.start_time ASC",
+            HRB_Status_Constants::BOOKING_STATUS_NO_SHOW
+        ));
+    }
+
+    /**
+     * Replace the no-show placeholders in a template string
+     *
+     * @since 1.21.0
+     * @param string $content  Template with {placeholders}
+     * @param array  $bookings Rows from collect_no_shows()
+     * @param string $trigger  'automatic' or 'manual'
+     * @return string
+     */
+    private function fill_no_show_template($content, array $bookings, $trigger) {
+        $company_name = get_option('hrb_company_name', get_bloginfo('name'));
+        $company_logo = get_option('hrb_company_logo', '');
+
+        $logo_html = '';
+        if ($company_logo) {
+            $logo_html = '<img src="' . esc_url($company_logo) . '" alt="' . esc_attr($company_name) . '">';
+        }
+
+        $value = 0.0;
+        foreach ($bookings as $booking) {
+            $value += (float) $booking->total_amount;
+        }
+
+        $date_format = get_option('hrb_date_format', 'd.m.Y');
+        $count       = count($bookings);
+
+        $replacements = [
+            '{no_show_count}'   => (string) $count,
+            '{no_show_value}'   => hrb_format_amount($value),
+            '{no_show_rows}'    => $this->render_no_show_rows($bookings),
+            '{no_show_reason}'  => 'manual' === $trigger
+                ? esc_html__('Marked by hand at the desk.', 'hourly-room-booking')
+                : esc_html__('Marked automatically: the booking\'s day has passed and the money never arrived.', 'hourly-room-booking'),
+            '{summary_date}'    => date_i18n($date_format, current_time('timestamp')),
+            '{company_logo_html}' => $logo_html,
+            '{company_logo}'    => esc_url($company_logo),
+            '{company_name}'    => esc_html($company_name),
+            '{company_phone}'   => esc_html(get_option('hrb_company_phone', '')),
+            '{company_email}'   => esc_html(get_option('hrb_company_email', get_option('admin_email'))),
+        ];
+
+        return str_replace(array_keys($replacements), array_values($replacements), $content);
+    }
+
+    /**
+     * One table row per no-show booking
+     *
+     * @since 1.21.0
+     * @param array $bookings Rows from collect_no_shows()
+     * @return string
+     */
+    private function render_no_show_rows(array $bookings) {
+        $date_format = get_option('hrb_date_format', 'd.m.Y');
+        $time_format = get_option('hrb_time_format', 'H:i');
+        $cell        = 'padding:10px 12px;border-bottom:1px solid #e5e7eb;font-size:14px;color:#1f2328;vertical-align:top;';
+        $rows        = '';
+
+        foreach ($bookings as $booking) {
+            $when = date_i18n($date_format, strtotime($booking->booking_date))
+                . ' &middot; ' . date_i18n($time_format, strtotime($booking->booking_date . ' ' . $booking->start_time))
+                . '&ndash;' . date_i18n($time_format, strtotime($booking->booking_date . ' ' . $booking->end_time));
+
+            $name = trim((string) $booking->customer_name);
+            if ($name === '') {
+                $name = __('Anonymous booking', 'hourly-room-booking');
+            }
+
+            $rows .= '<tr>'
+                . '<td style="' . $cell . '"><strong>' . esc_html($booking->booking_reference) . '</strong><br>'
+                . '<span style="color:#6b7280;font-size:13px;">' . esc_html($name) . '</span></td>'
+                . '<td style="' . $cell . '">' . esc_html($booking->room_name) . '<br>'
+                . '<span style="color:#6b7280;font-size:13px;">' . $when . '</span></td>'
+                . '<td style="' . $cell . 'text-align:right;white-space:nowrap;">' . hrb_format_amount($booking->total_amount) . '</td>'
+                . '</tr>';
+        }
+
+        return $rows;
+    }
+
     /**
      * Who receives the summary
      *
@@ -717,14 +933,16 @@ class HRB_Daily_Summary {
      *     @type string $html_content
      * }
      */
-    private function get_template() {
+    private function get_template($key = null) {
         global $wpdb;
+
+        $key = $key === null ? self::TEMPLATE_KEY : $key;
 
         $row = $wpdb->get_row($wpdb->prepare(
             "SELECT subject, html_content
              FROM {$wpdb->prefix}hrb_email_templates
              WHERE template_key = %s AND template_type = 'admin' AND is_active = 1",
-            self::TEMPLATE_KEY
+            $key
         ));
 
         if ($row && !empty($row->html_content)) {
@@ -734,7 +952,7 @@ class HRB_Daily_Summary {
             ];
         }
 
-        return self::bundled_template();
+        return self::bundled_template($key);
     }
 
     /**
@@ -743,7 +961,9 @@ class HRB_Daily_Summary {
      * @since 1.6.0
      * @return array
      */
-    public static function bundled_template() {
+    public static function bundled_template($key = null) {
+        $key = $key === null ? self::TEMPLATE_KEY : $key;
+
         $fallback = [
             'subject'      => 'Tageszusammenfassung {summary_date} - {company_name}',
             'html_content' => '<p>{summary_date}</p><p>{total_bookings}</p><p>{total_revenue}</p>',
@@ -760,7 +980,7 @@ class HRB_Daily_Summary {
         }
 
         foreach ($templates as $template) {
-            if (isset($template['template_key']) && $template['template_key'] === self::TEMPLATE_KEY) {
+            if (isset($template['template_key']) && $template['template_key'] === $key) {
                 return [
                     'subject'      => (string) $template['subject'],
                     'html_content' => (string) $template['html_content'],

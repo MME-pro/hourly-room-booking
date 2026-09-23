@@ -5,6 +5,20 @@ All notable changes to the Hourly Room Booking System plugin are documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-09-23
+
+### Added
+- **A no-show now tells someone.** Until now a booking became a no-show in silence: the end-of-day pass turned every past unpaid booking into one, voided its money, and nobody found out unless they went looking at the list. The team that reads the daily summary is exactly the team that wants to know, so that is who is told. One mail per pass, listing every booking it marked — reference, customer, room, date and time, amount — with the count and the total value that will never be collected.
+- **Marking a booking No Show by hand sends the same mail**, for that one booking, with the reason line saying it was marked at the desk rather than by the clock. It is wired into both paths a status can change through — the booking edit form and the status action — because either one is someone at the desk reaching the conclusion early, and it fires only on the transition, so re-saving a booking that is already a no-show sends nothing.
+- The mail is a branded template, `no_show_summary_admin`, editable on the Email Templates screen like every other mail the plugin sends. Recipients are the daily summary's own list, falling back to the team notification addresses the same way. `hrb_no_show_summary_recipients` filters that list, and returning an empty array switches the notice off.
+- Deliberately not tied to the daily summary's on/off switch: that governs a scheduled report of a day's figures, while this is news about bookings that will never be paid.
+
+### Fixed
+- A test pinned the email bundle version to one exact literal, so adding any later template to the bundle broke it. It now checks what it was actually trying to prove — that the version is no older than the day the template it cares about joined the bundle.
+
+### Database
+- The email template bundle version is bumped, so existing sites are seeded with the new template on the next admin load. Templates the team has already edited are left untouched.
+
 ## [1.20.0] - 2026-09-23
 
 ### Changed

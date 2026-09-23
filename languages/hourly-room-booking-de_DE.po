@@ -15,6 +15,15 @@ msgstr ""
 msgid "Cancellation Fee"
 msgstr "Stornogebühr"
 
+msgid "Anonymous booking"
+msgstr "Anonyme Buchung"
+
+msgid "Marked by hand at the desk."
+msgstr "Manuell am Empfang markiert."
+
+msgid "Marked automatically: the booking's day has passed and the money never arrived."
+msgstr "Automatisch markiert: Der Buchungstag ist vergangen und die Zahlung ist nie eingegangen."
+
 msgid "View Transaction"
 msgstr "Transaktion anzeigen"
 
